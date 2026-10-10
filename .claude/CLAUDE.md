@@ -46,6 +46,14 @@ Use focused tests after each behavior change. The normal suite includes instruct
 - `addon/server/socket_server.py`: loopback listener and client acceptance.
 - `tests/`: unit, transport, drift, instruction, MCP protocol and opt-in live tests.
 
+## Autodesk API Reference
+
+Use the [API pointer index and lookup guide](../docs/fusion-api/README.md) to find
+official API functions before developing tools. Search the linked TSV by qualified
+symbol or member kind; do not load the whole index into context. Fetch the relevant
+Autodesk pages on demand for signatures and behavior. The index contains pointers
+only and is not evidence of installed-version support or MCP acceptance.
+
 ## Adding a Command or Resource
 
 1. Implement the candidate handler and mock with unit tests, without normal production registration.

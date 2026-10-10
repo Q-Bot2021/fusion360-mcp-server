@@ -105,6 +105,10 @@ not sandbox the remaining CAD/import/export tools or other agent execution tools
 
 ### Development Rules
 
+The [Autodesk API pointer index](docs/fusion-api/README.md) catalogs official API
+objects and members for toolset development. It contains names, kinds and URLs
+only; search the index, then fetch relevant Autodesk documentation on demand.
+
 See [dev_rules.md](dev_rules.md) for pytest/Ruff commands, unit-test requirements,
 MCP protocol and live-Fusion registration gates, and Claude/Copilot instruction
 equivalence. New or changed tools/resources must have both E2E layers verified

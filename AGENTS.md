@@ -34,6 +34,12 @@ Both TCP endpoints are numeric IPv4 loopback only. Host inputs accept only
 No CLI/environment re-enable switch is allowed. For VS Code devcontainers use
 the Windows-local stdio MCP configuration, not the disabled TCP bridge.
 
+## Autodesk API Reference
+
+Use the [API pointer index](docs/fusion-api/README.md) to locate official desktop
+API members. Search the TSV and fetch only the relevant linked pages into context;
+do not infer signatures or installed-version support from the index alone.
+
 ## Tool Reference
 
 ### Scene & Query
