@@ -6,7 +6,8 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{ name = "Faust Machines" }]
+# Forked from faust-machines/fusion360-mcp-server.
+authors = [{ name = "quentin0104" }]
 dependencies = [
     "anyio>=4.5",
     "click>=8.1",
