@@ -12,6 +12,9 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HANDLER = REPO_ROOT / "addon" / "server" / "command_handler.py"
@@ -26,6 +29,42 @@ def _method(name: str) -> ast.FunctionDef:
             if isinstance(node, ast.FunctionDef) and node.name == name:
                 return node
     raise AssertionError(f"CommandHandler.{name} not found in {HANDLER}")
+
+
+@pytest.mark.parametrize("method_name", ["execute_command", "execute_code"])
+def test_disabled_execution_before_any_fusion_access(method_name):
+    node = _method(method_name)
+    namespace = {}
+    compiled = compile(ast.Module(body=[node], type_ignores=[]), str(HANDLER), "exec")
+    exec(compiled, namespace)
+    stub = SimpleNamespace(DISABLED_COMMANDS=frozenset({"execute_code"}))
+    argument = (
+        {"type": "execute_code", "params": {"code": "raise RuntimeError()"}}
+        if method_name == "execute_command" else "raise RuntimeError()"
+    )
+    result = namespace[method_name](stub, argument)
+    assert result["error_kind"] == "INVALID_INPUT"
+    assert "disabled by policy" in result.get("message", result.get("error_message"))
+
+
+def test_original_execution_body_is_retained():
+    node = _method("execute_code")
+    calls = {
+        child.func.id for child in ast.walk(node)
+        if isinstance(child, ast.Call) and isinstance(child.func, ast.Name)
+    }
+    assert {"exec", "eval"} <= calls
+
+
+def test_startup_validates_host_before_constructing_handler():
+    tree = ast.parse((REPO_ROOT / "addon/Fusion360MCP.py").read_text(encoding="utf-8"))
+    calls = {
+        child.func.id: child.lineno for child in ast.walk(tree)
+        if isinstance(child, ast.Call) and isinstance(child.func, ast.Name)
+        and child.func.id in {"validate_host", "CommandHandler", "Fusion360MCPServer"}
+    }
+    assert calls["validate_host"] < calls["CommandHandler"]
+    assert calls["CommandHandler"] < calls["Fusion360MCPServer"]
 
 
 def _called_attrs(node: ast.AST) -> set[str]:

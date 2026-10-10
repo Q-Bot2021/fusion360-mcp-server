@@ -32,6 +32,11 @@ param(
     [switch]$Remove
 )
 
+if (-not $Remove) {
+    Write-Error "TCP bridge setup is disabled. Use a Windows-local stdio MCP server. Only -Remove cleanup is supported."
+    exit 1
+}
+
 $FirewallRuleName = "Fusion MCP - Docker Container Bridge (port $Port)"
 
 # Discover Docker/WSL2 bridge adapter IPs at runtime.

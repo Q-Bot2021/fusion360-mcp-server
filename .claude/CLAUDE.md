@@ -1,51 +1,65 @@
 # Fusion360 MCP Server
 
-## What this is
+## Context and Required Rules
 
-An MCP server that bridges Claude Code to Autodesk Fusion 360 for CAD automation. Two components:
+Read and apply [Development and testing rules](../dev_rules.md) before developing code or registering MCP capabilities.
 
-1. **This repo** — Python MCP server (stdio transport, 81 tools). Claude talks to this.
-2. **Fusion360MCP add-in** — installed in Fusion's AddIns folder. Listens on `localhost:9876`.
+- **[UNIT]** All newly developed executable code requires unit tests in the same change. Changed behavior requires regression tests.
+- **[E2E]** Every new or changed tool, resource and resource template must pass MCP protocol end-to-end tests and live local-Fusion end-to-end tests before production registration or publication of the change. Unavailable Fusion or skipped tests mean pending acceptance, not success.
+- **[SYNC]** Keep [.claude/CLAUDE.md](../.claude/CLAUDE.md) and [.github/copilot-instructions.md](../.github/copilot-instructions.md) identical. Whenever either file changes, update both in the same change. Only CRLF/LF line-ending differences are allowed; CI enforces equivalence.
 
-The MCP server receives tool calls from Claude, forwards them as JSON over TCP to the add-in, and returns results.
+## Overview
 
-## Architecture
+This Python MCP server connects AI coding agents to Autodesk Fusion 360 for CAD automation. Agents communicate over stdio; commands are forwarded as JSON to the Fusion360MCP add-in installed in Fusion's AddIns folder.
 
+```text
+MCP client <-> stdio server <-> TCP 127.0.0.1:9876 <-> Fusion add-in <-> CustomEvent <-> Fusion main thread
 ```
-Claude Code ←(stdio MCP)→ This Server ←(TCP :9876)→ Fusion360MCP Add-in ←(CustomEvent)→ Fusion Main Thread
-```
+
+Fusion API calls run on the main thread through a work queue and CustomEvent bridge. Mock mode requires no Fusion installation. Derive active capabilities from discovery rather than assuming historical tool counts.
+
+## Security Policy
+
+- `execute_code` is unconditionally disabled. Its source and definitions remain for reference, but it is not discoverable or callable. Never re-enable it or use it as a workaround.
+- Both TCP endpoints are IPv4 loopback only. `--host` and `FUSION_MCP_HOST` accept only `localhost` or `127.0.0.1`, normalized to `127.0.0.1`. Custom local ports remain supported. No remote override or wildcard bind is allowed.
+- Bundled TCP bridge startup is disabled. For VS Code devcontainers, run this MCP in the Windows-local user profile over stdio. Bridge cleanup requires user/admin approval; existing proxies are not removed by source edits.
+- Do not introduce SSH, TCP relays, HTTP transports or policy enable switches. Loopback is not authentication or protection against administrator-created tunnels.
 
 ## Development
 
-```bash
-uv sync --dev      # install deps
-uv run pytest -v   # run tests (275 tests)
-uv run ruff check  # lint
+```text
+uv sync --dev --python 3.12
+uv run --python 3.12 pytest -v -ra
+uv run --python 3.12 ruff check
 ```
 
-## Key files
+Use focused tests after each behavior change. The normal suite includes instruction equivalence and MCP protocol checks; live tests require explicit selection and named fixtures as documented in `dev_rules.md`. Report unexecuted verification honestly.
 
-- `src/fusion360_mcp/server.py` — MCP server entry point (click CLI), resources, prompts
-- `src/fusion360_mcp/connection.py` — TCP client to Fusion add-in
-- `src/fusion360_mcp/tools.py` — 81 tool definitions with annotations
-- `src/fusion360_mcp/hints.py` — error-classification table (mirror of `addon/server/hints.py`)
-- `src/fusion360_mcp/mock.py` — mock responses for `--mode mock` testing
-- `tests/` — 275 tests covering tools, mock handlers, server routing, connection, annotations
+## Key Files
 
-## Adding a new command
+- `src/fusion360_mcp/server.py`: Click CLI, shared server factory, resources and prompts.
+- `src/fusion360_mcp/connection.py`: loopback TCP client and execution policy.
+- `src/fusion360_mcp/tools.py`: retained definitions, annotations and active discovery.
+- `src/fusion360_mcp/mock.py`: mock handlers, including explicit disabled-command errors.
+- `src/fusion360_mcp/hints.py`: error classification, mirrored in `addon/server/hints.py`.
+- `addon/server/command_handler.py`: Fusion handlers, dispatch and execution guards.
+- `addon/server/socket_server.py`: loopback listener and client acceptance.
+- `tests/`: unit, transport, drift, instruction, MCP protocol and opt-in live tests.
 
-1. Add the handler method in the **add-in's** `command_handler.py`
-2. Add a tool definition dict in `src/fusion360_mcp/tools.py`
-3. Add a mock handler in `src/fusion360_mcp/mock.py` + dispatch entry
-4. Add tool name to the annotation sets if read-only/destructive/idempotent
-5. Update `tests/test_tools.py` expected set and add mock test in `tests/test_mock.py`
-6. The MCP server forwards tool calls 1:1 — no mapping code needed
+## Adding a Command or Resource
+
+1. Implement the candidate handler and mock with unit tests, without normal production registration.
+2. Stage definitions and dispatch only in an isolated test session using the real MCP request handlers.
+3. Pass meaningful protocol and live-Fusion E2E cases; record exact-revision evidence. Existing unchanged registrations are audited without retroactive disabling.
+4. Only after acceptance, register the command/tool or resource/template. Add annotations and update registry, mock, drift and capability coverage checks together.
+5. MCP command names map directly to add-in commands; no translation layer is needed. Reuse existing tests and helpers.
 
 ## Conventions
 
-- Tool names use snake_case and must match the add-in's command names exactly
-- All Fusion API units are in **centimeters** (Fusion's internal unit)
-- The add-in uses newline-delimited JSON over TCP
-- `ping` is the health check — it never touches the Fusion API
-- Every tool has annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`)
-- Every tool has a mock handler so `--mode mock` works without Fusion running
+- Tool names use snake_case and match add-in command names exactly.
+- All Fusion API lengths are centimeters. Name bodies, sketches and components explicitly.
+- Use one operation per tool call and verify resulting state with queries/deltas. Render at logical checkpoints, not after every mutation.
+- The add-in uses newline-delimited JSON over TCP. `ping` never accesses Fusion geometry.
+- Every active tool has annotations and a mock handler. Mocks are not live geometry evidence.
+- Never retry an ambiguous mutation blindly; inspect the design after errors.
+- Use disposable designs and explicit consent for mutation acceptance tests. Never clear a user's existing design.

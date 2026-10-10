@@ -31,5 +31,5 @@ jobs:
       - name: Lint
         run: uv run ruff check src/ tests/
 
-      - name: Test
-        run: uv run pytest -v
+      - name: Test unit, protocol and instruction equivalence (live Fusion opt-in)
+        run: uv run pytest -v -ra

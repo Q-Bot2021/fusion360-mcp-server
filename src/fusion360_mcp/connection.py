@@ -1,10 +1,9 @@
 """
 TCP connection to the Fusion360MCP add-in running inside Fusion 360.
 
-The add-in listens on localhost:9876 by default and speaks
-newline-delimited JSON. Override via env vars FUSION_MCP_HOST /
-FUSION_MCP_PORT for cross-machine setups (e.g. MCP server on a
-Mac Mini connecting to Fusion running on a Windows PC).
+The add-in speaks newline-delimited JSON on IPv4 loopback only.
+FUSION_MCP_HOST must be localhost or 127.0.0.1; FUSION_MCP_PORT
+can select a different local port.
 """
 
 import json
@@ -16,10 +15,20 @@ from typing import Any
 
 from .hints import classify as _classify
 from .mock import _MUTATION_MOCKS as _MUTATION_COMMANDS
+from .tools import DISABLED_COMMANDS
 
 log = logging.getLogger("fusion360_mcp.connection")
 
-_DEFAULT_HOST = os.environ.get("FUSION_MCP_HOST", "localhost")
+_DEFAULT_HOST = os.environ.get("FUSION_MCP_HOST", "127.0.0.1")
+
+
+def validate_host(host: str) -> str:
+    """Accept explicit IPv4 loopback without resolving hostnames."""
+    if host not in ("localhost", "127.0.0.1"):
+        raise ValueError(
+            "Remote connections are disabled: host must be localhost or 127.0.0.1"
+        )
+    return "127.0.0.1"
 
 
 def _default_port() -> int:
@@ -56,7 +65,7 @@ class Fusion360Connection:
     """Persistent TCP connection to the Fusion 360 add-in socket server."""
 
     def __init__(self, host: str = _DEFAULT_HOST, port: int = _DEFAULT_PORT):
-        self.host = host
+        self.host = validate_host(host)
         self.port = port
         self._sock: socket.socket | None = None
 
@@ -65,6 +74,7 @@ class Fusion360Connection:
     # ------------------------------------------------------------------
 
     def connect(self) -> bool:
+        self.host = validate_host(self.host)
         if self._sock is not None:
             return True
         try:
@@ -139,6 +149,11 @@ class Fusion360Connection:
         queued or executed the command already, and re-sending could apply
         the change twice.
         """
+        self.host = validate_host(self.host)
+        if command_type in DISABLED_COMMANDS:
+            raise FusionError(
+                f"{command_type} is disabled by policy", error_kind="INVALID_INPUT"
+            )
         if not self._sock and not self.connect():
             raise ConnectionError(
                 "Not connected to Fusion 360.  Make sure the add-in is running."
@@ -236,6 +251,7 @@ def get_connection(
     endpoint is worse than reconnecting.
     """
     global _connection
+    host = validate_host(host)
     if _connection is not None and (
         _connection.host != host or _connection.port != port
     ):

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is an MCP server (93 tools) that connects AI coding agents to Autodesk Fusion 360 for CAD automation. It consists of two pieces:
+This is an MCP server that connects AI coding agents to Autodesk Fusion 360 for CAD automation. Derive available tools from discovery; retained definitions may be disabled. It consists of two pieces:
 
 1. **MCP Server** (this repo) — speaks MCP protocol over stdio, forwards commands to Fusion via TCP
 2. **Fusion 360 Add-in** — runs inside Fusion, executes commands on the main thread via CustomEvent bridge
@@ -16,7 +16,25 @@ Claude Code ──stdio──> MCP Server ──TCP :9876──> Fusion Add-in �
 
 The add-in uses a CustomEvent + work queue pattern to safely dispatch all Fusion API calls to the main thread. Socket threads submit work items and block on a per-item `threading.Event` until the main thread completes execution.
 
-## Available tools (93)
+## Developer and Security Rules
+
+Read [dev_rules.md](dev_rules.md) before developing or registering capabilities.
+All new executable code requires unit tests; changed behavior requires regression
+tests. New or changed tools, resources and templates require passing MCP protocol
+and live local-Fusion E2E tests before production registration/publication.
+Existing unchanged registrations are audited without retroactive disabling.
+
+Keep [.claude/CLAUDE.md](.claude/CLAUDE.md) and
+[.github/copilot-instructions.md](.github/copilot-instructions.md) identical in the
+same change; pytest/CI enforce equivalence except CRLF/LF line endings.
+
+`execute_code` is unconditionally disabled, including direct add-in requests.
+Both TCP endpoints are numeric IPv4 loopback only. Host inputs accept only
+`localhost` or `127.0.0.1`; remote hosts and wildcard binds are rejected.
+No CLI/environment re-enable switch is allowed. For VS Code devcontainers use
+the Windows-local stdio MCP configuration, not the disabled TCP bridge.
+
+## Tool Reference
 
 ### Scene & Query
 | Tool | Description |
@@ -153,10 +171,10 @@ The add-in uses a CustomEvent + work queue pattern to safely dispatch all Fusion
 | `cam_list_operations` | List operations in a setup |
 | `cam_get_operation_info` | Get operation details (strategy, tool, parameters) |
 
-### Code Execution
-| Tool | Description |
-|------|-------------|
-| `execute_code` | Run arbitrary Python in Fusion (REPL-style) |
+### Disabled Code Execution
+
+`execute_code` retains its definition and implementation for reference, but is
+absent from discovery and rejected before execution. Never use it as a workaround.
 
 ### Perception
 | Tool | Description |
@@ -215,8 +233,7 @@ Known `error_kind` values: `PROFILE_NOT_CLOSED`, `SKETCH_NOT_FOUND`, `BODY_NOT_F
 ## Important constraints
 
 - **One operation per tool call.** Never batch multiple operations — Fusion's API is not thread-safe and complex scripts crash the add-in.
-- **No loops inside execute_code.** If you need to create 3 similar features, make 3 separate tool calls.
-- **Keep execute_code under ~15 lines.** Prefer the dedicated tools over execute_code whenever possible.
+- **No arbitrary Python execution.** Use dedicated tools; unsupported operations remain unsupported.
 - **Units are centimeters.** Fusion's internal API uses cm, not mm.
 - **30-second timeout.** Commands that take longer than 30s will return a timeout error.
 - **body_name preferred over body_index.** Use named lookups when possible.

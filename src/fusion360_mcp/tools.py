@@ -2479,10 +2479,15 @@ for _t in TOOLS:
     }
 
 
+DISABLED_COMMANDS = frozenset({"execute_code"})
+
+
 def get_tool_list() -> list[types.Tool]:
     """Convert tool dicts to MCP Tool objects."""
     result = []
     for t in TOOLS:
+        if t["name"] in DISABLED_COMMANDS:
+            continue
         ann = t.get("annotations")
         tool = types.Tool(
             name=t["name"],
@@ -2496,6 +2501,8 @@ def get_tool_list() -> list[types.Tool]:
 
 
 def get_tool_by_name(name: str) -> dict | None:
+    if name in DISABLED_COMMANDS:
+        return None
     for t in TOOLS:
         if t["name"] == name:
             return t

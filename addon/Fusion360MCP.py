@@ -37,11 +37,11 @@ def run(context):
         from .server import LOG_PATH, get_logger
         from .server.command_handler import CommandHandler
         from .server.event_bridge import EventBridge
-        from .server.socket_server import Fusion360MCPServer
+        from .server.socket_server import Fusion360MCPServer, validate_host
 
         _log = get_logger("main")
 
-        host = os.environ.get("FUSION_MCP_HOST", "localhost")
+        host = validate_host(os.environ.get("FUSION_MCP_HOST", "127.0.0.1"))
         port = int(os.environ.get("FUSION_MCP_PORT", "9876"))
 
         _handler = CommandHandler()

@@ -8,6 +8,7 @@ import pytest
 from fusion360_mcp.hints import classify
 from fusion360_mcp.mock import _MUTATION_MOCKS, mock_command
 from fusion360_mcp.server import _format_result
+from fusion360_mcp.tools import DISABLED_COMMANDS
 
 
 class TestHintClassification:
@@ -74,6 +75,10 @@ class TestMockDeltas:
     def test_mutation_has_deltas(self):
         for cmd in _MUTATION_MOCKS:
             result = mock_command(cmd, {})
+            if cmd in DISABLED_COMMANDS:
+                assert result["ok"] is False
+                assert "deltas" not in result
+                continue
             assert "deltas" in result, f"{cmd} should expose deltas"
             deltas = result["deltas"]
             assert "body_count_delta" in deltas

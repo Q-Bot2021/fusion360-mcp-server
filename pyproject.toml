@@ -40,6 +40,10 @@ select = ["E", "F", "I"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "protocol_e2e: SDK-driven MCP sessions using deterministic backends",
+    "fusion_e2e: explicit live Fusion acceptance on a local host",
+]
 
 [dependency-groups]
 dev = [

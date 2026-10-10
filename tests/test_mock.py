@@ -219,8 +219,17 @@ class TestMockSceneControl:
 class TestMockExecuteCode:
     def test_execute_code(self):
         result = mock_command("execute_code", {"code": "1 + 1"})
-        assert result["code"] == "1 + 1"
-        assert "result" in result
+        assert result["ok"] is False
+        assert result["error_kind"] == "INVALID_INPUT"
+        assert "disabled by policy" in result["error_message"]
+
+    def test_disabled_handler_never_called(self, monkeypatch):
+        def forbidden_handler(params):
+            pytest.fail("Disabled mock handler was called")
+
+        monkeypatch.setitem(_DISPATCH, "execute_code", forbidden_handler)
+        result = mock_command("execute_code", {"__mock_error__": "override"})
+        assert result["error_message"] == "execute_code is disabled by policy"
 
 
 class TestMockNewGeometry:

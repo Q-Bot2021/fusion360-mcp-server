@@ -3,7 +3,19 @@
 import json
 import re
 
+import pytest
+
 from fusion360_mcp.server import _send
+
+
+def test_server_factory_keeps_security_policy():
+    from mcp.server.lowlevel import Server
+
+    from fusion360_mcp.server import build_server
+
+    assert isinstance(build_server("mock", host="localhost"), Server)
+    with pytest.raises(ValueError, match="Remote connections are disabled"):
+        build_server("mock", host="0.0.0.0")
 
 
 class TestSendRouting:
@@ -14,6 +26,35 @@ class TestSendRouting:
         assert result["mode"] == "mock"
         assert result["status"] == "pong"
 
+    @pytest.mark.parametrize("mode", ["mock", "socket"])
+    def test_disabled_command_never_forwarded(self, monkeypatch, mode):
+        import fusion360_mcp.server as mod
+
+        def forbidden(*args, **kwargs):
+            pytest.fail("Disabled command was forwarded")
+
+        monkeypatch.setattr(mod, "get_connection", forbidden)
+        monkeypatch.setattr(mod, "mock_command", forbidden)
+        result = _send(mode, "execute_code", {"code": "raise RuntimeError()"})
+        assert result["ok"] is False
+        assert result["error_kind"] == "INVALID_INPUT"
+
+    @pytest.mark.parametrize("source", ["cli", "environment"])
+    def test_remote_host_rejected_by_cli(self, source):
+        from click.testing import CliRunner
+
+        from fusion360_mcp.server import main
+
+        args = ["--mode", "mock"]
+        env = {"FUSION_MCP_HOST": "127.0.0.1"}
+        if source == "cli":
+            args += ["--host", "192.0.2.1"]
+        else:
+            env["FUSION_MCP_HOST"] = "192.0.2.1"
+        result = CliRunner().invoke(main, args, env=env)
+        assert result.exit_code == 2
+        assert "Remote connections are disabled" in result.output
+
     def test_mock_mode_forwards_params(self):
         result = _send("mock", "get_object_info", {"name": "TestBody"})
         assert result["name"] == "TestBody"
@@ -21,33 +62,29 @@ class TestSendRouting:
 
     def test_mock_mode_all_tools_succeed(self):
         """Every registered tool should succeed through mock routing."""
-        from fusion360_mcp.tools import TOOLS
+        from fusion360_mcp.tools import get_tool_list
 
-        for tool in TOOLS:
-            result = _send("mock", tool["name"], {})
+        for tool in get_tool_list():
+            result = _send("mock", tool.name, {})
             assert isinstance(result, dict)
             assert result.get("mode") == "mock", (
-                f"Tool {tool['name']} missing mode=mock in mock response"
+                f"Tool {tool.name} missing mode=mock in mock response"
             )
 
-    def test_socket_mode_calls_connection(self):
+    def test_socket_mode_calls_connection(self, monkeypatch):
         """Socket mode should use the TCP connection, not mock."""
-        # We verify socket mode by checking it does NOT include
-        # the mock marker in the response.  If the real add-in is
-        # not running this will raise; if it is running the result
-        # won't have mode=mock.
-        import fusion360_mcp.connection as conn_mod
+        from unittest.mock import Mock
 
-        saved = conn_mod._connection
-        conn_mod._connection = None
-        try:
-            result = _send("socket", "ping", None)
-            # If we got here, Fusion is actually running — verify not mock
-            assert result.get("mode") != "mock"
-        except (ConnectionError, OSError):
-            pass  # Expected when no Fusion add-in is running
-        finally:
-            conn_mod._connection = saved
+        import fusion360_mcp.server as mod
+
+        connection = Mock()
+        connection.send_command.return_value = {"status": "pong"}
+        factory = Mock(return_value=connection)
+        monkeypatch.setattr(mod, "get_connection", factory)
+        result = _send("socket", "ping", None)
+        assert result == {"status": "pong"}
+        factory.assert_called_once_with(host="127.0.0.1", port=9876)
+        connection.send_command.assert_called_once_with("ping", None)
 
 
 class TestMockResources:

@@ -1,6 +1,65 @@
 # Devcontainer setup
 
-Run `fusion360-mcp-server` from inside a Docker devcontainer (e.g. VS Code's Dev Containers extension) while Fusion 360 runs on the Windows host.
+Run the MCP **on the Windows host**, over stdio, while VS Code keeps your workspace
+in a same-PC devcontainer. TCP bridge startup is unconditionally disabled.
+
+## Supported Host-local Setup
+
+1. Install this changed checkout on Windows (`uv sync --dev --python 3.12`) and
+  copy its updated add-in to Fusion's AddIns location. Restart the add-in.
+2. In the local VS Code user profile, use **MCP: Open User Configuration**. Do not
+  put this server in container workspace or remote-user configuration.
+3. Use a Windows-local executable from this checkout. For example, adapting the
+  checkout path to your installation:
+
+```json
+{
+  "servers": {
+   "fusion360": {
+    "type": "stdio",
+    "command": "C:\\GitRepo\\fusion360-mcp-server\\.venv\\Scripts\\python.exe",
+    "args": ["-m", "fusion360_mcp", "--mode", "socket"],
+    "env": {"FUSION_MCP_HOST": "127.0.0.1", "FUSION_MCP_PORT": "9876"}
+   }
+  }
+}
+```
+
+4. Remove the old wrapper entry from active client configuration. Confirm the MCP
+  process runs on Windows, not in Docker, while the workspace remains in Docker.
+5. Call `ping` and `get_scene_info` through VS Code. The only Fusion listener must
+  be `127.0.0.1` on the configured port, with no bridge forwarding rules.
+
+[VS Code documents local user-profile MCP servers](https://code.visualstudio.com/docs/copilot/customization/mcp-servers)
+as running locally even in remote workspaces. Verify on your installed client;
+do not silently restore networking if that integration is unavailable.
+Container-native Claude Code/Cursor processes need a separately designed local
+IPC integration and are not supported by this replacement.
+
+## Existing Bridge Cleanup
+
+Changing source does not remove persistent Windows networking rules or stop old
+relay processes. Inventory Fusion-specific `netsh interface portproxy show all`
+entries and firewall rules first. With administrator approval, run cleanup for
+each previously configured Fusion port from an elevated terminal:
+
+```powershell
+.\devcontainer\fusion-mcp-bridge.ps1 -Remove -Port 9876
+```
+
+Inspect for leftover rules targeting removed adapters or old wildcard bindings;
+remove only identified Fusion rules. Confirm ownership before stopping old
+wrapper processes. Do not delete unrelated proxy/firewall rules. The setup path
+now errors, while its original implementation and cleanup path remain in source.
+
+See [developer rules](../dev_rules.md) for protocol and live-Fusion verification.
+
+<details>
+<summary>Historical bridge reference (disabled; do not follow these setup steps)</summary>
+
+The following describes the retained legacy implementation, not the supported
+setup. Private address ranges do not prove an adapter belongs to Docker, and a
+proxy can mask a remote client's source as loopback.
 
 ## The problem
 
@@ -49,7 +108,7 @@ Follow the main README — copy the `addon` directory into Fusion's add-ins fold
 ```
 
 The script:
-1. Discovers Docker bridge adapter IPs (those in the 172.16–31.x range — avoids LAN/VPN adapters)
+1. Historically selected adapters by a 172.16–31.x heuristic, which can also include LAN/VPN adapters
 2. Adds a `netsh portproxy` rule per adapter forwarding to `127.0.0.1:9876`
 3. Adds a Windows Firewall inbound rule scoped to those subnets
 
@@ -138,4 +197,8 @@ Ask your MCP client to call the `ping` tool. If it returns `{"pong": true}`, you
 
 ## Why not bind the add-in to 0.0.0.0?
 
-That would expose the Fusion API on every interface — including LAN and VPN adapters. The bridge approach scopes exposure to the Docker bridge subnet only, with a firewall rule that drops everything else.
+That would expose the Fusion API on LAN/VPN interfaces. Wildcard binding and
+bridge startup are now disabled; private-subnet matching was not a sufficient
+same-machine security boundary.
+
+</details>

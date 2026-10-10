@@ -23,11 +23,20 @@ _RESTART_DELAY = 2.0  # seconds before rebinding after socket error
 _MAX_RESTARTS = 10  # consecutive restart cap before giving up
 
 
+def validate_host(host: str) -> str:
+    """Accept explicit IPv4 loopback without resolving hostnames."""
+    if host not in ("localhost", "127.0.0.1"):
+        raise ValueError(
+            "Remote connections are disabled: host must be localhost or 127.0.0.1"
+        )
+    return "127.0.0.1"
+
+
 class Fusion360MCPServer:
     """TCP server that receives JSON commands and dispatches via EventBridge."""
 
     def __init__(self, event_bridge, host="localhost", port=9876):
-        self.host = host
+        self.host = validate_host(host)
         self.port = port
         self._bridge = event_bridge
         self._running = False
@@ -41,6 +50,7 @@ class Fusion360MCPServer:
     # ------------------------------------------------------------------
 
     def start(self):
+        self.host = validate_host(self.host)
         if self._running:
             return False
 
@@ -81,6 +91,7 @@ class Fusion360MCPServer:
 
     def _bind_socket(self):
         """Create, bind, and listen.  Returns True on success."""
+        self.host = validate_host(self.host)
         self._close_socket()
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -113,6 +124,13 @@ class Fusion360MCPServer:
         restarts = 0
 
         while self._running:
+            try:
+                self.host = validate_host(self.host)
+            except ValueError as exc:
+                log.error("Listener stopped: %s", exc)
+                self._running = False
+                self._close_socket()
+                return
             if not self._bind_socket():
                 restarts += 1
                 if restarts > _MAX_RESTARTS:
@@ -147,6 +165,10 @@ class Fusion360MCPServer:
         while self._running:
             try:
                 client, addr = self._socket.accept()
+                if addr[0] != "127.0.0.1":
+                    client.close()
+                    log.warning("Rejected nonlocal client: %s", addr)
+                    continue
                 log.info("Client connected: %s", addr)
                 with self._clients_lock:
                     self._clients.add(client)

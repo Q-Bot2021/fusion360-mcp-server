@@ -88,6 +88,33 @@ def test_mutation_sets_in_sync():
     )
 
 
+def test_disabled_commands_in_sync():
+    from fusion360_mcp.tools import DISABLED_COMMANDS
+
+    addon_set = _extract_class_attr_set(
+        REPO_ROOT / "addon" / "server" / "command_handler.py",
+        "CommandHandler",
+        "DISABLED_COMMANDS",
+    )
+    assert addon_set == set(DISABLED_COMMANDS)
+    assert addon_set == {"execute_code"}
+
+
+def test_host_validators_in_sync():
+    def validator(path):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        return ast.dump(
+            next(
+                node for node in tree.body
+                if isinstance(node, ast.FunctionDef) and node.name == "validate_host"
+            )
+        )
+
+    assert validator(REPO_ROOT / "src/fusion360_mcp/connection.py") == validator(
+        REPO_ROOT / "addon/server/socket_server.py"
+    )
+
+
 def _extract_command_dispatch_keys(path: Path) -> set[str]:
     """Pull the string keys of the ``_COMMANDS`` dict literal out of the
     add-in's command_handler via AST (the module can't be imported without

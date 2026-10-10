@@ -11,6 +11,7 @@ from fusion360_mcp.connection import (
     FusionError,
     get_connection,
     reset_connection,
+    validate_host,
 )
 
 
@@ -499,6 +500,52 @@ class TestMutationTimeoutSafety:
         t0 = time.monotonic()
         assert conn.ping() is False
         assert time.monotonic() - t0 < 2.0
+
+
+class TestLocalOnlyPolicy:
+    @pytest.mark.parametrize(
+        "host",
+        ["0.0.0.0", "192.0.2.1", "example.com", "host.docker.internal", "::1", ""],
+    )
+    def test_invalid_hosts_never_open_socket(self, monkeypatch, host):
+        def forbidden(*args, **kwargs):
+            pytest.fail("Policy rejection opened a socket")
+
+        monkeypatch.setattr(socket, "socket", forbidden)
+        with pytest.raises(ValueError, match="Remote connections are disabled"):
+            Fusion360Connection(host=host)
+        with pytest.raises(ValueError, match="Remote connections are disabled"):
+            get_connection(host=host)
+
+    @pytest.mark.parametrize("host", ["localhost", "127.0.0.1"])
+    def test_local_hosts_are_numeric(self, host):
+        assert validate_host(host) == "127.0.0.1"
+        assert Fusion360Connection(host=host, port=12345).port == 12345
+
+    @pytest.mark.parametrize("operation", ["connect", "send"])
+    def test_changed_host_rejected_even_with_cached_socket(self, operation):
+        from unittest.mock import Mock
+
+        conn = Fusion360Connection()
+        cached = Mock()
+        conn._sock = cached
+        conn.host = "192.0.2.1"
+        with pytest.raises(ValueError, match="Remote connections are disabled"):
+            if operation == "connect":
+                conn.connect()
+            else:
+                conn.send_command("ping")
+        cached.sendall.assert_not_called()
+
+    def test_execute_code_never_connects(self, monkeypatch):
+        conn = Fusion360Connection()
+
+        def forbidden():
+            pytest.fail("Disabled command opened a connection")
+
+        monkeypatch.setattr(conn, "connect", forbidden)
+        with pytest.raises(FusionError, match="disabled by policy"):
+            conn.send_command("execute_code", {"code": "1 + 1"})
 
 
 class TestEndpointChange:

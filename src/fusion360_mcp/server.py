@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+from urllib.parse import unquote
 
 import anyio
 import click
@@ -21,9 +22,10 @@ from .connection import (
     FusionError,
     get_connection,
     reset_connection,
+    validate_host,
 )
 from .mock import mock_command
-from .tools import get_tool_by_name, get_tool_list
+from .tools import DISABLED_COMMANDS, get_tool_by_name, get_tool_list
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -40,6 +42,14 @@ def _send(
     port: int = _DEFAULT_PORT,
 ) -> dict:
     """Route a command through either the real TCP connection or mock."""
+    if command_type in DISABLED_COMMANDS:
+        return {
+            "ok": False,
+            "error_kind": "INVALID_INPUT",
+            "error_message": f"{command_type} is disabled by policy",
+            "hints": [],
+        }
+    host = validate_host(host)
     if mode == "mock":
         return mock_command(command_type, params)
     conn = get_connection(host=host, port=port)
@@ -167,8 +177,8 @@ def _format_result(
     type=str,
     default=lambda: os.environ.get("FUSION_MCP_HOST", "localhost"),
     help=(
-        "Host where the Fusion 360 add-in listens (env: FUSION_MCP_HOST). "
-        "Use the Windows LAN IP when the MCP server runs on a different machine."
+        "Local Fusion host: localhost or 127.0.0.1 only (env: FUSION_MCP_HOST). "
+        "Remote connections are disabled."
     ),
 )
 @click.option(
@@ -179,7 +189,32 @@ def _format_result(
 )
 def main(mode: str, host: str, port: int) -> int:
     """Fusion360 MCP Server — connects Claude to Fusion 360."""
+    try:
+        host = validate_host(host)
+    except ValueError as exc:
+        raise click.BadParameter(
+            str(exc), param_hint="--host / FUSION_MCP_HOST"
+        ) from exc
 
+    app = build_server(mode, host=host, port=port)
+    from mcp.server.stdio import stdio_server
+
+    async def arun():
+        async with stdio_server() as streams:
+            await app.run(streams[0], streams[1], app.create_initialization_options())
+
+    anyio.run(arun)
+    return 0
+
+
+def build_server(
+    mode: str,
+    *,
+    host: str = _DEFAULT_HOST,
+    port: int = _DEFAULT_PORT,
+) -> Server:
+    """Build the same MCP request handlers used by the CLI and isolated tests."""
+    host = validate_host(host)
     app = Server("fusion360-mcp-server")
 
     # ── tools ────────────────────────────────────────────────────────
@@ -247,6 +282,7 @@ def main(mode: str, host: str, port: int) -> int:
 
     @app.read_resource()
     async def read_resource(uri: str) -> str:
+        uri = str(uri)
         if uri == "fusion360://status":
             try:
                 result = _send(mode, "ping", host=host, port=port)
@@ -285,7 +321,7 @@ def main(mode: str, host: str, port: int) -> int:
         # ── resource template matches ─────────────────────────────
         body_match = re.match(r"^fusion360://body/(.+)$", uri)
         if body_match:
-            name = body_match.group(1)
+            name = unquote(body_match.group(1))
             try:
                 result = _send(
                     mode,
@@ -304,7 +340,7 @@ def main(mode: str, host: str, port: int) -> int:
             uri,
         )
         if comp_match:
-            name = comp_match.group(1)
+            name = unquote(comp_match.group(1))
             try:
                 result = _send(
                     mode,
@@ -464,13 +500,4 @@ def main(mode: str, host: str, port: int) -> int:
             ],
         )
 
-    # ── run ──────────────────────────────────────────────────────────
-
-    from mcp.server.stdio import stdio_server
-
-    async def arun():
-        async with stdio_server() as streams:
-            await app.run(streams[0], streams[1], app.create_initialization_options())
-
-    anyio.run(arun)
-    return 0
+    return app

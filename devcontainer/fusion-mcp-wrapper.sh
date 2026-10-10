@@ -17,6 +17,9 @@
 
 set -e
 
+echo "ERROR: TCP bridging is disabled. Configure Fusion MCP in VS Code's Windows-local user profile (stdio)." >&2
+exit 1
+
 # Start TCP relay: container localhost:9876 → host.docker.internal:9876
 python3 - <<'EOF' &
 import socket, threading

@@ -83,35 +83,32 @@ uvx fusion360-mcp-server --mode socket
 ```
 </details>
 
-### Cross-machine setup (LAN)
+### Local-only Security Policy
 
-If the MCP server and Fusion 360 run on different machines (e.g. MCP server on a Mac Mini, Fusion on a Windows PC), override the bind/connect address via environment variables on **both** sides.
+Arbitrary Python execution (`execute_code`) is disabled unconditionally. Its
+definition and implementation are retained, but it is absent from tool discovery
+and rejected by MCP routing, mock dispatch, the TCP client and the Fusion handler.
 
-**On the Fusion host** (where the add-in runs), bind to all interfaces before starting Fusion:
+Both TCP endpoints accept only `localhost` or `127.0.0.1`, normalized to numeric
+IPv4 loopback. Remote hosts, wildcard addresses, `host.docker.internal` and IPv6
+are rejected. `--host` / `FUSION_MCP_HOST` remain for compatible local settings;
+`--port` / `FUSION_MCP_PORT` can select another local port. No re-enable switch exists.
 
-```powershell
-# Windows
-$env:FUSION_MCP_HOST = "0.0.0.0"
-```
+For VS Code devcontainers, run the MCP on the Windows host through local-profile
+stdio configuration, not the disabled TCP bridge. See [devcontainer setup](devcontainer/README.md).
+Use an installation containing these changes, not an older published package.
+Restart the installed add-in and MCP after updating them.
 
-```bash
-# macOS / Linux
-export FUSION_MCP_HOST=0.0.0.0
-```
+Loopback is not authentication. Existing OS port proxies or tunnels can still
+expose a local listener and require separate, approved cleanup. This policy does
+not sandbox the remaining CAD/import/export tools or other agent execution tools.
 
-Then start Fusion and run the `Fusion360MCP` add-in. The log line `Server listening on 0.0.0.0:9876` confirms the bind.
+### Development Rules
 
-**On the MCP-server host**, point the client at the Fusion host's LAN IP:
-
-```bash
-# Either via CLI flag
-uvx fusion360-mcp-server --mode socket --host 192.168.1.42
-
-# Or via env var (useful in MCP client configs)
-FUSION_MCP_HOST=192.168.1.42 uvx fusion360-mcp-server --mode socket
-```
-
-**Security note:** the TCP socket has no authentication. Only expose it on a trusted LAN — never bind to `0.0.0.0` on a host reachable from the public internet.
+See [dev_rules.md](dev_rules.md) for pytest/Ruff commands, unit-test requirements,
+MCP protocol and live-Fusion registration gates, and Claude/Copilot instruction
+equivalence. New or changed tools/resources must have both E2E layers verified
+before registration; mock-only CI is not live Fusion acceptance.
 
 ### 3. Verify
 
@@ -281,7 +278,7 @@ Call the `ping` tool from your client. If it returns `{"ok": true, "status": "po
 ### Code Execution
 | Tool | Description |
 |------|-------------|
-| `execute_code` | Run arbitrary Python in Fusion (REPL-style) |
+| `execute_code` | Disabled by policy; retained source only, not an available tool |
 
 ### Perception
 | Tool | Description |

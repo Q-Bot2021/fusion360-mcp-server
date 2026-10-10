@@ -112,8 +112,16 @@ class CommandHandler:
         }
     )
 
+    DISABLED_COMMANDS = frozenset({"execute_code"})
+
     def execute_command(self, command: dict) -> dict:
         """Route *command* to the correct handler; return a response dict."""
+        if command.get("type") in self.DISABLED_COMMANDS:
+            return {
+                "status": "error",
+                "error_kind": "INVALID_INPUT",
+                "message": f"{command['type']} is disabled by policy",
+            }
         if self._COMMANDS is None:
             self.__class__._COMMANDS = {
                 # scene / query
@@ -2364,7 +2372,10 @@ class CommandHandler:
             p3 = adsk.core.Point3D.create(*point_three)
             inp.setByThreePoints(p1, p2, p3)
         elif method == "tangent":
-            raise RuntimeError("Tangent plane needs face selection—use execute_code")
+            raise RuntimeError(
+                "Tangent plane requires face selection, "
+                "which this tool does not support"
+            )
         else:
             raise RuntimeError(f"Unknown method: {method}")
 
@@ -3526,6 +3537,12 @@ class CommandHandler:
     # ------------------------------------------------------------------
 
     def execute_code(self, code: str):
+        return {
+            "ok": False,
+            "error_kind": "INVALID_INPUT",
+            "error_message": "execute_code is disabled by policy",
+            "hints": [],
+        }
         design = self._design()
         type_before = design.designType
 

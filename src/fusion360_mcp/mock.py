@@ -81,6 +81,16 @@ def mock_command(command_type: str, params: dict[str, Any] | None = None) -> dic
     simulates an addon-side failure: ``ok: False`` plus a classified
     ``error_kind`` and contextual ``hints``.
     """
+    from .tools import DISABLED_COMMANDS
+
+    if command_type in DISABLED_COMMANDS:
+        return {
+            "ok": False,
+            "error_kind": "INVALID_INPUT",
+            "error_message": f"{command_type} is disabled by policy",
+            "hints": [],
+            "mode": "mock",
+        }
     params = params or {}
 
     forced = params.get("__mock_error__")

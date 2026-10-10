@@ -1,6 +1,11 @@
 """Tests for the tool registry."""
 
-from fusion360_mcp.tools import TOOLS, get_tool_by_name, get_tool_list
+from fusion360_mcp.tools import (
+    DISABLED_COMMANDS,
+    TOOLS,
+    get_tool_by_name,
+    get_tool_list,
+)
 
 
 def test_all_tools_have_required_keys():
@@ -41,7 +46,7 @@ def test_no_duplicate_tool_names():
 
 def test_get_tool_list_returns_mcp_types():
     tools = get_tool_list()
-    assert len(tools) == len(TOOLS)
+    assert len(tools) == len(TOOLS) - len(DISABLED_COMMANDS)
     for tool in tools:
         assert hasattr(tool, "name")
         assert hasattr(tool, "inputSchema")
@@ -54,6 +59,12 @@ def test_get_tool_by_name_found():
 
 def test_get_tool_by_name_missing():
     assert get_tool_by_name("nonexistent_tool") is None
+
+
+def test_execute_code_retained_but_unavailable():
+    assert any(tool["name"] == "execute_code" for tool in TOOLS)
+    assert get_tool_by_name("execute_code") is None
+    assert "execute_code" not in {tool.name for tool in get_tool_list()}
 
 
 def test_expected_tools_present():
@@ -265,6 +276,9 @@ def test_get_tool_by_name_returns_correct_tool():
     """get_tool_by_name should return the exact matching tool."""
     for t in TOOLS:
         found = get_tool_by_name(t["name"])
+        if t["name"] in DISABLED_COMMANDS:
+            assert found is None
+            continue
         assert found is t, f"get_tool_by_name('{t['name']}') returned wrong object"
 
 
