@@ -129,6 +129,9 @@ class TestToolAnnotations:
         from fusion360_mcp.tools import TOOLS
 
         read_only_names = {
+            "get_body_topology",
+            "get_feature_health",
+            "get_document_state",
             "get_scene_info",
             "get_object_info",
             "get_bounding_box",
@@ -158,7 +161,12 @@ class TestToolAnnotations:
     def test_destructive_tools(self):
         from fusion360_mcp.tools import TOOLS
 
-        destructive = {"delete_all", "delete_parameter"}
+        destructive = {
+            "delete_all",
+            "delete_parameter",
+            "extrude_sketch_entities",
+            "chamfer_edges",
+        }
         for t in TOOLS:
             ann = t["annotations"]
             if t["name"] in destructive:

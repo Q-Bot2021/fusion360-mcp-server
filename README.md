@@ -105,6 +105,26 @@ not sandbox the remaining CAD/import/export tools or other agent execution tools
 
 ### Development Rules
 
+Production includes `get_feature_health` for paginated feature diagnostics and
+`get_document_state` for active document/save/project identity. Drawing preview
+and sandbox-save candidates remain in the development profile pending eligibility
+and acceptance; successful experiments do not automatically permit promotion.
+
+See the [mechanical and drawing coverage inventory](docs/mechanical/README.md)
+for per-member assignment review and initial development-only inspection tools
+and resources. Unverified backlog entries are not registered capabilities.
+
+The reusable CAD development profile is retained separately from production:
+`python -m tests.development_mcp` connects to Fusion360MCPDev on loopback 9877.
+It includes active CAD tools and a fixed, no-argument `dev_reload_candidates`
+operation. Keep this profile for future development; cleanup of one-off test
+scripts must not remove it. See [dev_rules.md](dev_rules.md) for staging rules.
+
+Electronics development is outside this MCP's scope. Research on Fusion 2705.1.25
+did not establish an end-to-end electronics authoring/manufacturing path; the
+experimental tools and fixtures have been removed. General API documentation
+pointers do not imply supported MCP capabilities.
+
 The [Autodesk API pointer index](docs/fusion-api/README.md) catalogs official API
 objects and members for toolset development. It contains names, kinds and URLs
 only; search the index, then fetch relevant Autodesk documentation on demand.

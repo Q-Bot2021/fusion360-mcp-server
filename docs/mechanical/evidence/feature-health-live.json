@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "development_only": true,
+  "component_name": "(Unsaved)",
+  "total": 1,
+  "offset": 0,
+  "features": [
+    {
+      "index": 0,
+      "name": "Extrude1",
+      "object_type": "adsk::fusion::ExtrudeFeature",
+      "health_state": 0,
+      "message": ""
+    }
+  ],
+  "next_offset": null
+}

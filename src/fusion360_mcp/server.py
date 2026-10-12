@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+from collections.abc import Callable
 from urllib.parse import unquote
 
 import anyio
@@ -25,7 +26,13 @@ from .connection import (
     validate_host,
 )
 from .mock import mock_command
-from .tools import DISABLED_COMMANDS, get_tool_by_name, get_tool_list
+from .tools import (
+    DIRECT_TOOL_CALLS,
+    DISABLED_COMMANDS,
+    TEXT_VISIBILITY_REVIEW,
+    get_tool_by_name,
+    get_tool_list,
+)
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -40,6 +47,7 @@ def _send(
     *,
     host: str = _DEFAULT_HOST,
     port: int = _DEFAULT_PORT,
+    mutation: bool = False,
 ) -> dict:
     """Route a command through either the real TCP connection or mock."""
     if command_type in DISABLED_COMMANDS:
@@ -53,6 +61,8 @@ def _send(
     if mode == "mock":
         return mock_command(command_type, params)
     conn = get_connection(host=host, port=port)
+    if mutation:
+        return conn.send_command(command_type, params, mutation=True)
     return conn.send_command(command_type, params)
 
 
@@ -212,28 +222,41 @@ def build_server(
     *,
     host: str = _DEFAULT_HOST,
     port: int = _DEFAULT_PORT,
+    tool_list: Callable[[], list[types.Tool]] = get_tool_list,
+    tool_lookup: Callable[[str], dict | None] = get_tool_by_name,
+    structured_results: bool = False,
+    extra_resources: tuple[types.Resource, ...] = (),
+    extra_resource_reader: Callable[[str], str] | None = None,
 ) -> Server:
     """Build the same MCP request handlers used by the CLI and isolated tests."""
     host = validate_host(host)
-    app = Server("fusion360-mcp-server")
+    app = Server(
+        "fusion360-mcp-server",
+        instructions=DIRECT_TOOL_CALLS + " " + TEXT_VISIBILITY_REVIEW,
+    )
 
     # ── tools ────────────────────────────────────────────────────────
 
     @app.list_tools()
     async def list_tools() -> list[types.Tool]:
-        return get_tool_list()
+        return [tool for tool in tool_list() if tool.name not in DISABLED_COMMANDS]
 
     @app.call_tool()
     async def call_tool(
         name: str,
         arguments: dict,
     ) -> list[types.ContentBlock]:
-        tool_def = get_tool_by_name(name)
+        if name in DISABLED_COMMANDS:
+            raise ValueError(f"{name} is disabled by policy")
+        tool_def = tool_lookup(name)
         if not tool_def:
             raise ValueError(f"Unknown tool: {name}")
 
         try:
-            result = _send(mode, name, arguments, host=host, port=port)
+            result = _send(
+                mode, name, arguments, host=host, port=port,
+                mutation=not tool_def.get("annotations", {}).get("readOnlyHint", False),
+            )
         except FusionError as exc:
             # Structured failure from the add-in (or a non-retried
             # mutation timeout) — the connection itself is healthy.
@@ -253,13 +276,18 @@ def build_server(
                 isError=True,
             )
 
-        return _format_result(name, result)
+        formatted = _format_result(name, result)
+        if structured_results and isinstance(result, dict):
+            if not isinstance(formatted, types.CallToolResult):
+                formatted = types.CallToolResult(content=formatted, isError=False)
+            formatted.structuredContent = result
+        return formatted
 
     # ── resources ────────────────────────────────────────────────────
 
     @app.list_resources()
     async def list_resources() -> list[types.Resource]:
-        return [
+        return [*extra_resources,
             types.Resource(
                 uri="fusion360://status",
                 name="Connection Status",
@@ -283,6 +311,10 @@ def build_server(
     @app.read_resource()
     async def read_resource(uri: str) -> str:
         uri = str(uri)
+        if uri in {str(resource.uri) for resource in extra_resources}:
+            if extra_resource_reader is None:
+                raise ValueError("Development resource reader is not configured")
+            return extra_resource_reader(uri)
         if uri == "fusion360://status":
             try:
                 result = _send(mode, "ping", host=host, port=port)

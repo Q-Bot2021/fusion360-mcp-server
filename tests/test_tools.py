@@ -8,6 +8,15 @@ from fusion360_mcp.tools import (
 )
 
 
+def test_license_gated_tool_documents_entitlement_without_disabling_users():
+    tool = get_tool_by_name("auto_constrain")
+    assert tool is not None
+    assert "License-gated" in tool["description"]
+    assert "eligible licensed users" in tool["description"]
+    assert "Exact subscription tier" in tool["description"]
+    assert "auto_constrain" not in DISABLED_COMMANDS
+
+
 def test_all_tools_have_required_keys():
     for t in TOOLS:
         assert "name" in t, f"Tool missing 'name': {t}"
@@ -73,6 +82,14 @@ def test_expected_tools_present():
     expected = {
         # scene / query
         "get_scene_info",
+        "get_feature_health",
+        "get_document_state",
+        "create_design",
+        "draw_sketch_text",
+        "extrude_sketch_entities",
+        "get_body_topology",
+        "chamfer_edges",
+        "save_design",
         "get_object_info",
         "get_bounding_box",
         # sketch

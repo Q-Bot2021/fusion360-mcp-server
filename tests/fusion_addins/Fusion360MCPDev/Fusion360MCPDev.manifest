@@ -1,0 +1,11 @@
+{
+  "autodeskProduct": "Fusion360",
+  "type": "addin",
+  "id": "f9e537b5-2107-4d12-a220-19ff8201bc16",
+  "author": "",
+  "description": {"": "Isolated Fusion MCP CAD development profile"},
+  "version": "0.1.0",
+  "runOnStartup": false,
+  "supportedOS": "windows|mac",
+  "editEnabled": false
+}

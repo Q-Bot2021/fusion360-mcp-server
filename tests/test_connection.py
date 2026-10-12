@@ -503,6 +503,18 @@ class TestMutationTimeoutSafety:
 
 
 class TestLocalOnlyPolicy:
+    def test_explicit_development_mutation_is_not_retried(self, monkeypatch):
+        from unittest.mock import Mock
+
+        conn = Fusion360Connection()
+        conn._sock = Mock()
+        conn._sock.sendall.side_effect = socket.timeout("ambiguous response")
+        reconnect = Mock()
+        monkeypatch.setattr(conn, "connect", reconnect)
+        with pytest.raises(FusionError, match="NOT retried"):
+            conn.send_command("candidate_mutation", mutation=True)
+        reconnect.assert_not_called()
+
     @pytest.mark.parametrize(
         "host",
         ["0.0.0.0", "192.0.2.1", "example.com", "host.docker.internal", "::1", ""],

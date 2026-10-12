@@ -15,6 +15,7 @@ import tempfile
 import time
 import traceback
 from contextlib import redirect_stdout
+from pathlib import Path
 
 import adsk.cam
 import adsk.core
@@ -23,6 +24,7 @@ import adsk.fusion
 from . import get_logger
 from . import hints as _hints
 from . import hole_geometry as _hole_geom
+from . import mechanical_queries as _mechanical_queries
 from . import parameter_units as _param_units
 
 log = get_logger("handler")
@@ -62,6 +64,8 @@ class CommandHandler:
         {
             # feature ops
             "extrude",
+            "extrude_sketch_entities",
+            "chamfer_edges",
             "revolve",
             "sweep",
             "loft",
@@ -126,6 +130,14 @@ class CommandHandler:
             self.__class__._COMMANDS = {
                 # scene / query
                 "get_scene_info": self.get_scene_info,
+                "get_feature_health": self.get_feature_health,
+                "get_document_state": self.get_document_state,
+                "create_design": self.create_design,
+                "draw_sketch_text": self.draw_sketch_text,
+                "extrude_sketch_entities": self.extrude_sketch_entities,
+                "get_body_topology": self.get_body_topology,
+                "chamfer_edges": self.chamfer_edges,
+                "save_design": self.save_design,
                 "get_object_info": self.get_object_info,
                 "get_bounding_box": self.get_bounding_box,
                 "list_components": self.list_components,
@@ -307,50 +319,137 @@ class CommandHandler:
             raise RuntimeError("No active design")
         return d
 
+    def get_feature_health(self, component_name="", offset=0, limit=100):
+        result = _mechanical_queries.feature_health(
+            self._design(), component_name=component_name, offset=offset, limit=limit
+        )
+        result.pop("development_only", None)
+        return result
+
+    def get_document_state(self):
+        result = _mechanical_queries.document_state(self.app)
+        result.pop("development_only", None)
+        return result
+
+    def create_design(self, name):
+        result = _mechanical_queries.create_design(self.app, name)
+        result.pop("development_only", None)
+        return result
+
     def _root(self):
         return self._design().rootComponent
 
-    def _last_sketch(self):
-        root = self._root()
-        if root.sketches.count == 0:
+    def draw_sketch_text(self, **params):
+        result = _mechanical_queries.draw_sketch_text(self, **params)
+        result.pop("development_only", None)
+        return result
+
+    def extrude_sketch_entities(self, **params):
+        result = _mechanical_queries.extrude_sketch_entities(self, **params)
+        result.pop("development_only", None)
+        return result
+
+    def get_body_topology(self, **params):
+        return _mechanical_queries.get_body_topology(self, **params)
+
+    def chamfer_edges(self, **params):
+        return _mechanical_queries.chamfer_edges(self, **params)
+
+    def save_design(self, **params):
+        return _mechanical_queries.save_design(self.app, **params)
+
+    def _last_sketch(self, component_name: str = None):
+        component = (
+            self._component_by_name(component_name)
+            if component_name
+            else self._root()
+        )
+        if component.sketches.count == 0:
             raise RuntimeError("No sketch available — create one first")
-        return root.sketches.item(root.sketches.count - 1)
+        return component.sketches.item(component.sketches.count - 1)
 
-    def _sketch_by_name(self, name: str):
-        root = self._root()
-        for i in range(root.sketches.count):
-            s = root.sketches.item(i)
-            if s.name == name:
-                return s
-        raise RuntimeError(f"Sketch '{name}' not found")
+    def _sketch_by_name(self, name: str, component_name: str = None):
+        if not isinstance(name, str) or not name:
+            raise ValueError("Explicit sketch name is required")
+        components = (
+            [self._component_by_name(component_name)]
+            if component_name
+            else [self._design().allComponents.item(index)
+                  for index in range(self._design().allComponents.count)]
+        )
+        matches = [component.sketches.item(index)
+                   for component in components
+                   for index in range(component.sketches.count)
+                   if component.sketches.item(index).name == name]
+        if not matches:
+            raise RuntimeError(f"Sketch '{name}' not found")
+        if len(matches) != 1:
+            raise ValueError(f"Sketch '{name}' is ambiguous; specify component_name")
+        return matches[0]
 
-    def _body_by_name(self, name: str):
+    def _component_for_sketch(self, sketch):
+        components = self._design().allComponents
+        matches = [
+            components.item(component_index)
+            for component_index in range(components.count)
+            if any(
+                components.item(component_index).sketches.item(sketch_index) == sketch
+                for sketch_index in range(
+                    components.item(component_index).sketches.count
+                )
+            )
+        ]
+        if len(matches) != 1:
+            raise ValueError("Sketch owner component is missing or ambiguous")
+        return matches[0]
+
+    def _body_by_name(self, name: str, occurrence_path: str = ""):
+        if (
+            not isinstance(name, str)
+            or not name
+            or not isinstance(occurrence_path, str)
+        ):
+            raise ValueError("Explicit body name and occurrence path must be strings")
         root = self._root()
-        # Search root bodies first
-        for i in range(root.bRepBodies.count):
-            b = root.bRepBodies.item(i)
-            if b.name == name:
-                return b
-        # Search bodies inside components via occurrence proxies (assembly design)
-        # Returns proxy body in root coordinate space for correct boolean ops
-        for occ in root.allOccurrences:
-            for i in range(occ.bRepBodies.count):
-                b = occ.bRepBodies.item(i)
-                if b.name == name:
-                    return b
-        raise RuntimeError(f"Body '{name}' not found")
+        matches = []
+        if occurrence_path in {"", "root"}:
+            matches.extend(root.bRepBodies.item(index)
+                           for index in range(root.bRepBodies.count)
+                           if root.bRepBodies.item(index).name == name)
+        if occurrence_path != "root":
+            for occurrence in root.allOccurrences:
+                if occurrence_path and occurrence.fullPathName != occurrence_path:
+                    continue
+                matches.extend(occurrence.bRepBodies.item(index)
+                               for index in range(occurrence.bRepBodies.count)
+                               if occurrence.bRepBodies.item(index).name == name)
+        if not matches:
+            raise RuntimeError(f"Body '{name}' not found")
+        if len(matches) != 1:
+            raise ValueError(
+                f"Body '{name}' is ambiguous; use an explicit-target tool "
+                "or a unique body name"
+            )
+        return matches[0]
 
     def _component_by_name(self, name: str):
-        root = self._root()
-        if root.name == name:
-            return root
-        for occ in root.allOccurrences:
-            if occ.component.name == name:
-                return occ.component
-        raise RuntimeError(f"Component '{name}' not found")
+        components = self._design().allComponents
+        matches = [components.item(index) for index in range(components.count)
+                   if components.item(index).name == name]
+        if not matches:
+            raise RuntimeError(f"Component '{name}' not found")
+        if len(matches) != 1:
+            raise ValueError(
+                f"Component '{name}' is ambiguous; select a uniquely named component"
+            )
+        return matches[0]
 
-    def _construction_plane(self, plane: str):
-        root = self._root()
+    def _construction_plane(self, plane: str, component_name: str = None):
+        root = (
+            self._component_by_name(component_name)
+            if component_name
+            else self._root()
+        )
         m = {
             "xy": root.xYConstructionPlane,
             "yz": root.yZConstructionPlane,
@@ -388,32 +487,46 @@ class CommandHandler:
             )
         return t
 
-    def _select_edges(self, body, selection: str):
+    def _select_edges(self, body, selection: str, edge_indices=None):
         """Return an ObjectCollection of edges based on *selection*."""
         coll = adsk.core.ObjectCollection.create()
         bbox = body.boundingBox
 
-        if selection == "all":
+        def add_edge(edge):
+            coll.add(edge.nativeObject if edge.nativeObject else edge)
+
+        if edge_indices is not None:
+            if (not isinstance(edge_indices, list) or not edge_indices
+                    or len(edge_indices) > 200
+                    or any(type(index) is not int or not 0 <= index < body.edges.count
+                           for index in edge_indices)
+                    or len(set(edge_indices)) != len(edge_indices)):
+                raise ValueError(
+                    "Edge indices must be unique, current, and between 0 and 199 items"
+                )
+            for index in edge_indices:
+                add_edge(body.edges.item(index))
+        elif selection == "all":
             for edge in body.edges:
-                coll.add(edge)
+                add_edge(edge)
         elif selection == "top":
             threshold = bbox.maxPoint.z - 0.001
             for edge in body.edges:
                 mid = edge.pointOnEdge
                 if mid.z > threshold:
-                    coll.add(edge)
+                    add_edge(edge)
         elif selection == "bottom":
             threshold = bbox.minPoint.z + 0.001
             for edge in body.edges:
                 mid = edge.pointOnEdge
                 if mid.z < threshold:
-                    coll.add(edge)
+                    add_edge(edge)
         elif selection == "vertical":
             for edge in body.edges:
                 sp = edge.startVertex.geometry
                 ep = edge.endVertex.geometry
                 if abs(sp.x - ep.x) < 0.001 and abs(sp.y - ep.y) < 0.001:
-                    coll.add(edge)
+                    add_edge(edge)
         else:
             raise RuntimeError(
                 f"Unknown edge_selection '{selection}' — use all/top/bottom/vertical"
@@ -466,80 +579,134 @@ class CommandHandler:
     def get_scene_info(self):
         design = self._design()
         root = self._root()
-
         bodies = []
-        for i in range(root.bRepBodies.count):
-            b = root.bRepBodies.item(i)
-            bodies.append(
-                {
-                    "name": b.name,
-                    "volume": b.volume,
-                    "area": b.area,
-                    "material": b.material.name if b.material else None,
-                    "is_visible": b.isVisible,
-                }
-            )
+        components = [
+            {"name": root.name, "occurrence_path": "root", "is_visible": True}
+        ]
+
+        def add_bodies(
+            collection, component_name, occurrence_path, occurrence_visible=True
+        ):
+            for index in range(collection.count):
+                body = collection.item(index)
+                material = body.material
+                bodies.append({
+                    "name": body.name,
+                    "component_name": component_name,
+                    "occurrence_path": occurrence_path,
+                    "volume": body.volume,
+                    "area": body.area,
+                    "material": material.name if material else None,
+                    "is_visible": body.isVisible and occurrence_visible,
+                })
+
+        add_bodies(root.bRepBodies, root.name, "root")
+        for occurrence in root.allOccurrences:
+            occurrence_path = occurrence.fullPathName
+            components.append({
+                "name": occurrence.component.name,
+                "occurrence_path": occurrence_path,
+                "is_visible": occurrence.isVisible,
+            })
+            add_bodies(occurrence.bRepBodies, occurrence.component.name,
+                       occurrence_path, occurrence.isVisible)
 
         sketches = []
-        for i in range(root.sketches.count):
-            s = root.sketches.item(i)
-            sketches.append(
-                {
-                    "name": s.name,
-                    "profile_count": s.profiles.count,
-                    "is_visible": s.isVisible,
-                }
-            )
+        all_components = design.allComponents
+        for component_index in range(all_components.count):
+            component = all_components.item(component_index)
+            for sketch_index in range(component.sketches.count):
+                sketch = component.sketches.item(sketch_index)
+                sketches.append({
+                    "name": sketch.name,
+                    "component_name": component.name,
+                    "profile_count": sketch.profiles.count,
+                    "is_visible": sketch.isVisible,
+                })
+
+        feature_count = sum(
+            all_components.item(index).features.count
+            for index in range(all_components.count)
+        )
 
         return {
             "design_name": design.parentDocument.name,
             "design_type": design.productType,
             "bodies": bodies,
             "sketches": sketches,
-            "bodies_count": root.bRepBodies.count,
-            "sketches_count": root.sketches.count,
-            "features_count": root.features.count,
+            "components": components,
+            "components_count": len(components),
+            "bodies_count": len(bodies),
+            "sketches_count": len(sketches),
+            "features_count": feature_count,
             "timeline_count": (
                 design.timeline.count if hasattr(design, "timeline") else 0
             ),
             "camera": self._camera_info(),
         }
 
-    def get_object_info(self, name: str):
+    def get_object_info(
+        self, name: str, entity_type="auto", occurrence_path="", component_name=""
+    ):
+        if (not isinstance(name, str) or not name
+                or entity_type not in {"auto", "body", "sketch"}
+                or not isinstance(occurrence_path, str)
+                or not isinstance(component_name, str)
+                or (occurrence_path and component_name)
+                or (entity_type == "sketch" and occurrence_path)
+                or (entity_type == "body" and component_name)):
+            raise ValueError("Invalid explicit object target")
         root = self._root()
-
-        # bodies
-        for i in range(root.bRepBodies.count):
-            b = root.bRepBodies.item(i)
-            if b.name == name:
-                return {
-                    "found": True,
-                    "type": "body",
-                    "name": name,
-                    "volume": b.volume,
-                    "area": b.area,
-                    "material": b.material.name if b.material else None,
-                    "is_visible": b.isVisible,
-                    "faces_count": b.faces.count,
-                    "edges_count": b.edges.count,
-                    "vertices_count": b.vertices.count,
-                    "bounding_box": self._bbox_dict(b.boundingBox),
-                }
-
-        # sketches
-        for i in range(root.sketches.count):
-            s = root.sketches.item(i)
-            if s.name == name:
-                return {
-                    "found": True,
-                    "type": "sketch",
-                    "name": name,
-                    "is_visible": s.isVisible,
-                    "profile_count": s.profiles.count,
-                    "curve_count": s.sketchCurves.count,
-                }
-
-        return {"found": False, "name": name}
+        matches = []
+        if entity_type != "sketch" and not component_name:
+            if occurrence_path in {"", "root"}:
+                matches.extend(("body", root.bRepBodies.item(index))
+                               for index in range(root.bRepBodies.count)
+                               if root.bRepBodies.item(index).name == name)
+            if occurrence_path != "root":
+                for occurrence in root.allOccurrences:
+                    if occurrence_path and occurrence.fullPathName != occurrence_path:
+                        continue
+                    matches.extend(("body", occurrence.bRepBodies.item(index))
+                                   for index in range(occurrence.bRepBodies.count)
+                                   if occurrence.bRepBodies.item(index).name == name)
+        if entity_type != "body" and not occurrence_path:
+            components = self._design().allComponents
+            owners = [
+                components.item(index)
+                for index in range(components.count)
+                if not component_name
+                or components.item(index).name == component_name
+            ]
+            if component_name and len(owners) != 1:
+                raise ValueError("Sketch component target is missing or ambiguous")
+            for owner in owners:
+                matches.extend(("sketch", owner.sketches.item(index))
+                               for index in range(owner.sketches.count)
+                               if owner.sketches.item(index).name == name)
+        if not matches:
+            return {"found": False, "name": name}
+        if len(matches) != 1:
+            raise ValueError(
+                "Object name is ambiguous; select type and occurrence/component"
+            )
+        kind, entity = matches[0]
+        if kind == "body":
+            return {
+                "found": True, "type": "body", "name": name,
+                "volume": entity.volume, "area": entity.area,
+                "material": entity.material.name if entity.material else None,
+                "is_visible": entity.isVisible,
+                "faces_count": entity.faces.count,
+                "edges_count": entity.edges.count,
+                "vertices_count": entity.vertices.count,
+                "bounding_box": self._bbox_dict(entity.boundingBox),
+            }
+        return {
+            "found": True, "type": "sketch", "name": name,
+            "is_visible": entity.isVisible, "profile_count": entity.profiles.count,
+            "curve_count": entity.sketchCurves.count,
+        }
 
     def list_components(self):
         root = self._root()
@@ -613,21 +780,30 @@ class CommandHandler:
     # Sketch
     # ------------------------------------------------------------------
 
-    def create_sketch(self, plane: str = "xy", z_offset: float = None):
-        root = self._root()
+    def create_sketch(
+        self, plane: str = "xy", z_offset: float = None, component_name: str = None
+    ):
+        root = (
+            self._component_by_name(component_name)
+            if component_name
+            else self._root()
+        )
 
         if z_offset is not None and z_offset != 0:
             # Create an offset construction plane
             planes = root.constructionPlanes
             plane_input = planes.createInput()
             offset_val = adsk.core.ValueInput.createByReal(z_offset)
-            plane_input.setByOffset(self._construction_plane(plane), offset_val)
+            plane_input.setByOffset(
+                self._construction_plane(plane, component_name), offset_val
+            )
             cp = planes.add(plane_input)
             sketch = root.sketches.add(cp)
         else:
-            sketch = root.sketches.add(self._construction_plane(plane))
+            sketch = root.sketches.add(self._construction_plane(plane, component_name))
 
-        return {"sketch_name": sketch.name, "plane": plane, "z_offset": z_offset}
+        return {"sketch_name": sketch.name, "plane": plane, "z_offset": z_offset,
+                "component_name": root.name}
 
     def draw_rectangle(
         self,
@@ -636,8 +812,11 @@ class CommandHandler:
         origin_x: float = 0,
         origin_y: float = 0,
         origin_z: float = 0,
+        sketch_name: str = None,
+        component_name: str = None,
     ):
-        sketch = self._last_sketch()
+        sketch = (self._sketch_by_name(sketch_name, component_name)
+                  if sketch_name else self._last_sketch(component_name))
         p1 = adsk.core.Point3D.create(origin_x, origin_y, origin_z)
         p2 = adsk.core.Point3D.create(origin_x + width, origin_y + height, origin_z)
         sketch.sketchCurves.sketchLines.addTwoPointRectangle(p1, p2)
@@ -649,8 +828,11 @@ class CommandHandler:
         center_x: float = 0,
         center_y: float = 0,
         center_z: float = 0,
+        sketch_name: str = None,
+        component_name: str = None,
     ):
-        sketch = self._last_sketch()
+        sketch = (self._sketch_by_name(sketch_name, component_name)
+                  if sketch_name else self._last_sketch(component_name))
         c = adsk.core.Point3D.create(center_x, center_y, center_z)
         sketch.sketchCurves.sketchCircles.addByCenterRadius(c, radius)
         return {
@@ -667,8 +849,11 @@ class CommandHandler:
         end_y: float,
         start_z: float = 0,
         end_z: float = 0,
+        sketch_name: str = None,
+        component_name: str = None,
     ):
-        sketch = self._last_sketch()
+        sketch = (self._sketch_by_name(sketch_name, component_name)
+                  if sketch_name else self._last_sketch(component_name))
         sp = adsk.core.Point3D.create(start_x, start_y, start_z)
         ep = adsk.core.Point3D.create(end_x, end_y, end_z)
         sketch.sketchCurves.sketchLines.addByTwoPoints(sp, ep)
@@ -687,16 +872,23 @@ class CommandHandler:
         sweep_angle: float,
         center_z: float = 0,
         start_z: float = 0,
+        sketch_name: str = None,
+        component_name: str = None,
     ):
-        sketch = self._last_sketch()
+        sketch = (self._sketch_by_name(sketch_name, component_name)
+                  if sketch_name else self._last_sketch(component_name))
         center = adsk.core.Point3D.create(center_x, center_y, center_z)
         start = adsk.core.Point3D.create(start_x, start_y, start_z)
         sweep_rad = math.radians(sweep_angle)
         sketch.sketchCurves.sketchArcs.addByCenterStartSweep(center, start, sweep_rad)
         return {"sketch": sketch.name, "sweep_angle": sweep_angle}
 
-    def draw_spline(self, spline_type: str, points: list, degree: int = 3):
-        sketch = self._last_sketch()
+    def draw_spline(
+        self, spline_type: str, points: list, degree: int = 3,
+        sketch_name: str = None, component_name: str = None,
+    ):
+        sketch = (self._sketch_by_name(sketch_name, component_name)
+                  if sketch_name else self._last_sketch(component_name))
         pts = adsk.core.ObjectCollection.create()
         for p in points:
             z = p[2] if len(p) > 2 else 0
@@ -719,8 +911,11 @@ class CommandHandler:
         center_x: float = 0,
         center_y: float = 0,
         center_z: float = 0,
+        sketch_name: str = None,
+        component_name: str = None,
     ):
-        sketch = self._last_sketch()
+        sketch = (self._sketch_by_name(sketch_name, component_name)
+                  if sketch_name else self._last_sketch(component_name))
         # Draw inscribed polygon
         for i in range(sides):
             angle1 = 2 * math.pi * i / sides
@@ -745,9 +940,11 @@ class CommandHandler:
         entity_two: int = None,
         symmetry_line: int = None,
         sketch_name: str = None,
+        component_name: str = None,
     ):
         sketch = (
-            self._sketch_by_name(sketch_name) if sketch_name else self._last_sketch()
+            self._sketch_by_name(sketch_name, component_name)
+            if sketch_name else self._last_sketch(component_name)
         )
         constraints = sketch.geometricConstraints
         curves = list(sketch.sketchCurves)
@@ -783,14 +980,20 @@ class CommandHandler:
         self,
         sketch_name: str = None,
         result_option: int = 1,
+        component_name: str = None,
     ):
         """Auto-constrain a sketch using Fusion's AutoConstrain (Jan 2026+).
+
+        License-gated: the Autodesk account must be entitled to AutoConstrain.
+        Live acceptance on a restricted account was denied; eligible licensed
+        users may use it. The exact subscription tier remains unverified.
 
         result_option: 1 = thorough (default), 2 = fast,
         3 = may move geometry within tolerance.
         """
         sketch = (
-            self._sketch_by_name(sketch_name) if sketch_name else self._last_sketch()
+            self._sketch_by_name(sketch_name, component_name)
+            if sketch_name else self._last_sketch(component_name)
         )
 
         option_map = {
@@ -833,9 +1036,11 @@ class CommandHandler:
         entity_one: int = None,
         entity_two: int = None,
         sketch_name: str = None,
+        component_name: str = None,
     ):
         sketch = (
-            self._sketch_by_name(sketch_name) if sketch_name else self._last_sketch()
+            self._sketch_by_name(sketch_name, component_name)
+            if sketch_name else self._last_sketch(component_name)
         )
         dims = sketch.sketchDimensions
         curves = list(sketch.sketchCurves)
@@ -884,9 +1089,11 @@ class CommandHandler:
         direction_x: float = 1,
         direction_y: float = 0,
         sketch_name: str = None,
+        component_name: str = None,
     ):
         sketch = (
-            self._sketch_by_name(sketch_name) if sketch_name else self._last_sketch()
+            self._sketch_by_name(sketch_name, component_name)
+            if sketch_name else self._last_sketch(component_name)
         )
         curves = list(sketch.sketchCurves)
         curve = curves[curve_index]
@@ -898,10 +1105,12 @@ class CommandHandler:
         return {"sketch": sketch.name, "offset_distance": offset_distance}
 
     def trim_curve(
-        self, curve_index: int, point_x: float, point_y: float, sketch_name: str = None
+        self, curve_index: int, point_x: float, point_y: float,
+        sketch_name: str = None, component_name: str = None,
     ):
         sketch = (
-            self._sketch_by_name(sketch_name) if sketch_name else self._last_sketch()
+            self._sketch_by_name(sketch_name, component_name)
+            if sketch_name else self._last_sketch(component_name)
         )
         curves = list(sketch.sketchCurves)
         curve = curves[curve_index]
@@ -910,10 +1119,12 @@ class CommandHandler:
         return {"sketch": sketch.name, "trimmed": True}
 
     def extend_curve(
-        self, curve_index: int, point_x: float, point_y: float, sketch_name: str = None
+        self, curve_index: int, point_x: float, point_y: float,
+        sketch_name: str = None, component_name: str = None,
     ):
         sketch = (
-            self._sketch_by_name(sketch_name) if sketch_name else self._last_sketch()
+            self._sketch_by_name(sketch_name, component_name)
+            if sketch_name else self._last_sketch(component_name)
         )
         curves = list(sketch.sketchCurves)
         curve = curves[curve_index]
@@ -922,10 +1133,12 @@ class CommandHandler:
         return {"sketch": sketch.name, "extended": True}
 
     def project_geometry(
-        self, source_name: str, is_linked: bool = True, sketch_name: str = None
+        self, source_name: str, is_linked: bool = True, sketch_name: str = None,
+        component_name: str = None,
     ):
         sketch = (
-            self._sketch_by_name(sketch_name) if sketch_name else self._last_sketch()
+            self._sketch_by_name(sketch_name, component_name)
+            if sketch_name else self._last_sketch(component_name)
         )
         body = self._body_by_name(source_name)
 
@@ -950,14 +1163,17 @@ class CommandHandler:
         profile_index: int = 0,
         operation: str = "new_body",
         direction: str = "positive",
+        sketch_name: str = None,
+        component_name: str = None,
     ):
-        root = self._root()
-        sketch = self._last_sketch()
+        sketch = (self._sketch_by_name(sketch_name, component_name)
+                  if sketch_name else self._last_sketch(component_name))
+        owner = self._component_for_sketch(sketch)
         if sketch.profiles.count == 0:
             raise RuntimeError("No profiles in sketch")
         profile = sketch.profiles.item(profile_index)
 
-        ext_feats = root.features.extrudeFeatures
+        ext_feats = owner.features.extrudeFeatures
         ext_input = ext_feats.createInput(profile, self._operation_type(operation))
         dist = adsk.core.ValueInput.createByReal(height)
         if direction == "symmetric":
@@ -984,9 +1200,12 @@ class CommandHandler:
         axis_direction_y: float = 0,
         axis_direction_z: float = 0,
         operation: str = "new_body",
+        sketch_name: str = None,
+        component_name: str = None,
     ):
-        root = self._root()
-        sketch = self._last_sketch()
+        sketch = (self._sketch_by_name(sketch_name, component_name)
+                  if sketch_name else self._last_sketch(component_name))
+        owner = self._component_for_sketch(sketch)
         if sketch.profiles.count == 0:
             raise RuntimeError("No profiles in sketch")
         profile = sketch.profiles.item(profile_index)
@@ -997,11 +1216,11 @@ class CommandHandler:
         is_y = abs(axis_direction_y) > 0.99 and abs(axis_direction_x) < 0.01
         is_z = abs(axis_direction_z) > 0.99 and abs(axis_direction_x) < 0.01
         if is_x and abs(axis_direction_z) < 0.01:
-            axis_entity = root.xConstructionAxis
+            axis_entity = owner.xConstructionAxis
         elif is_y and abs(axis_direction_z) < 0.01:
-            axis_entity = root.yConstructionAxis
+            axis_entity = owner.yConstructionAxis
         elif is_z and abs(axis_direction_y) < 0.01:
-            axis_entity = root.zConstructionAxis
+            axis_entity = owner.zConstructionAxis
         else:
             # Create construction line in sketch
             origin = adsk.core.Point3D.create(
@@ -1016,7 +1235,7 @@ class CommandHandler:
             line.isConstruction = True
             axis_entity = line
 
-        rev_feats = root.features.revolveFeatures
+        rev_feats = owner.features.revolveFeatures
         rev_input = rev_feats.createInput(
             profile, axis_entity, self._operation_type(operation)
         )
@@ -1033,10 +1252,15 @@ class CommandHandler:
         path_sketch_name: str,
         path_curve_index: int = 0,
         operation: str = "new_body",
+        profile_sketch_name: str = None,
+        component_name: str = None,
     ):
-        root = self._root()
-        sketch = self._last_sketch()
-        path_sketch = self._sketch_by_name(path_sketch_name)
+        sketch = (self._sketch_by_name(profile_sketch_name, component_name)
+                  if profile_sketch_name else self._last_sketch(component_name))
+        path_sketch = self._sketch_by_name(path_sketch_name, component_name)
+        owner = self._component_for_sketch(sketch)
+        if self._component_for_sketch(path_sketch) != owner:
+            raise ValueError("Sweep profile and path sketches must share a component")
 
         if sketch.profiles.count == 0:
             raise RuntimeError("No profiles in sketch")
@@ -1045,22 +1269,29 @@ class CommandHandler:
         path_curves = list(path_sketch.sketchCurves)
         path_curve = path_curves[path_curve_index]
 
-        path = root.features.createPath(path_curve)
+        path = owner.features.createPath(path_curve)
 
-        sweep_feats = root.features.sweepFeatures
+        sweep_feats = owner.features.sweepFeatures
         sweep_input = sweep_feats.createInput(
             profile, path, self._operation_type(operation)
         )
         feat = sweep_feats.add(sweep_input)
         return {"feature_name": feat.name, "operation": operation}
 
-    def loft(self, profile_sketch_names: list, operation: str = "new_body"):
-        root = self._root()
-        loft_feats = root.features.loftFeatures
+    def loft(self, profile_sketch_names: list, operation: str = "new_body",
+             component_name: str = None):
+        sketches = [
+            self._sketch_by_name(name, component_name)
+            for name in profile_sketch_names
+        ]
+        owners = [self._component_for_sketch(sketch) for sketch in sketches]
+        if any(owner != owners[0] for owner in owners[1:]):
+            raise ValueError("Loft sketches must share an owning component")
+        owner = owners[0]
+        loft_feats = owner.features.loftFeatures
         loft_input = loft_feats.createInput(self._operation_type(operation))
 
-        for sketch_name in profile_sketch_names:
-            sketch = self._sketch_by_name(sketch_name)
+        for sketch_name, sketch in zip(profile_sketch_names, sketches):
             if sketch.profiles.count == 0:
                 raise RuntimeError(f"No profiles in sketch '{sketch_name}'")
             loft_input.loftSections.add(sketch.profiles.item(0))
@@ -1078,16 +1309,20 @@ class CommandHandler:
         body_name: str = None,
         body_index: int = 0,
         edge_selection: str = "all",
+        edge_indices: list = None,
+        occurrence_path: str = "",
     ):
-        root = self._root()
-        body = (
-            self._body_by_name(body_name)
-            if body_name
-            else root.bRepBodies.item(body_index)
-        )
-        edges = self._select_edges(body, edge_selection)
+        if body_name:
+            body = self._body_by_name(body_name, occurrence_path)
+        elif occurrence_path:
+            raise ValueError("occurrence_path requires an explicit body_name")
+        else:
+            body = self._root().bRepBodies.item(body_index)
+        edges = self._select_edges(body, edge_selection, edge_indices)
 
-        fillets = root.features.filletFeatures
+        native_body = body.nativeObject if body.nativeObject else body
+        owner = native_body.parentComponent
+        fillets = owner.features.filletFeatures
         inp = fillets.createInput()
         inp.addConstantRadiusEdgeSet(
             edges, adsk.core.ValueInput.createByReal(radius), True
@@ -1101,16 +1336,20 @@ class CommandHandler:
         body_name: str = None,
         body_index: int = 0,
         edge_selection: str = "all",
+        edge_indices: list = None,
+        occurrence_path: str = "",
     ):
-        root = self._root()
-        body = (
-            self._body_by_name(body_name)
-            if body_name
-            else root.bRepBodies.item(body_index)
-        )
-        edges = self._select_edges(body, edge_selection)
+        if body_name:
+            body = self._body_by_name(body_name, occurrence_path)
+        elif occurrence_path:
+            raise ValueError("occurrence_path requires an explicit body_name")
+        else:
+            body = self._root().bRepBodies.item(body_index)
+        edges = self._select_edges(body, edge_selection, edge_indices)
 
-        chamfers = root.features.chamferFeatures
+        native_body = body.nativeObject if body.nativeObject else body
+        owner = native_body.parentComponent
+        chamfers = owner.features.chamferFeatures
         inp = chamfers.createInput(edges, True)
         inp.setToEqualDistance(adsk.core.ValueInput.createByReal(distance))
         feat = chamfers.add(inp)
@@ -1126,38 +1365,56 @@ class CommandHandler:
         body_name: str = None,
         body_index: int = 0,
         face_selection: str = "top",
+        face_indices: list = None,
+        occurrence_path: str = "",
     ):
-        root = self._root()
-        body = (
-            self._body_by_name(body_name)
-            if body_name
-            else root.bRepBodies.item(body_index)
-        )
+        if body_name:
+            body = self._body_by_name(body_name, occurrence_path)
+        elif occurrence_path:
+            raise ValueError("occurrence_path requires an explicit body_name")
+        else:
+            body = self._root().bRepBodies.item(body_index)
+        native_body = body.nativeObject if body.nativeObject else body
+        if not native_body.isSolid:
+            raise ValueError("Shell requires a solid body")
 
         faces = adsk.core.ObjectCollection.create()
-        bbox = body.boundingBox
-
-        if face_selection == "top":
-            threshold = bbox.maxPoint.z - 0.001
-            for face in body.faces:
-                if face.boundingBox.maxPoint.z > threshold:
-                    faces.add(face)
-        elif face_selection == "bottom":
-            threshold = bbox.minPoint.z + 0.001
-            for face in body.faces:
-                if face.boundingBox.minPoint.z < threshold:
-                    faces.add(face)
+        if face_indices is not None:
+            if (not isinstance(face_indices, list) or not face_indices
+                    or len(face_indices) > 100
+                    or any(type(index) is not int or not 0 <= index < body.faces.count
+                           for index in face_indices)
+                    or len(set(face_indices)) != len(face_indices)):
+                raise ValueError(
+                    "face_indices must contain unique current body face indices"
+                )
+            for index in face_indices:
+                face = body.faces.item(index)
+                faces.add(face.nativeObject if face.nativeObject else face)
         else:
-            raise RuntimeError(
-                f"Unknown face_selection '{face_selection}' — use top/bottom"
-            )
+            bbox = body.boundingBox
+            if face_selection == "top":
+                threshold = bbox.maxPoint.z - 0.001
+                for face in body.faces:
+                    if face.boundingBox.maxPoint.z > threshold:
+                        faces.add(face.nativeObject if face.nativeObject else face)
+            elif face_selection == "bottom":
+                threshold = bbox.minPoint.z + 0.001
+                for face in body.faces:
+                    if face.boundingBox.minPoint.z < threshold:
+                        faces.add(face.nativeObject if face.nativeObject else face)
+            else:
+                raise RuntimeError(
+                    f"Unknown face_selection '{face_selection}' — use top/bottom"
+                )
 
         if faces.count == 0:
             raise RuntimeError(f"No faces matched '{face_selection}'")
 
-        shells = root.features.shellFeatures
+        owner = native_body.parentComponent
+        shells = owner.features.shellFeatures
         body_coll = adsk.core.ObjectCollection.create()
-        body_coll.add(body)
+        body_coll.add(native_body)
         inp = shells.createInput(body_coll)
         inp.facesToRemove = faces
         inp.insideThickness = adsk.core.ValueInput.createByReal(thickness)
@@ -1166,15 +1423,24 @@ class CommandHandler:
             "feature_name": feat.name,
             "thickness": thickness,
             "faces_removed": faces.count,
+            "body_name": body.name,
+            "selected_face_indices": face_indices,
         }
 
-    def mirror(self, mirror_plane: str, body_name: str = None, body_index: int = 0):
+    def mirror(
+        self,
+        mirror_plane: str,
+        body_name: str = None,
+        body_index: int = 0,
+        occurrence_path: str = "",
+    ):
         root = self._root()
-        body = (
-            self._body_by_name(body_name)
-            if body_name
-            else root.bRepBodies.item(body_index)
-        )
+        if body_name:
+            body = self._body_by_name(body_name, occurrence_path)
+        elif occurrence_path:
+            raise ValueError("occurrence_path requires an explicit body_name")
+        else:
+            body = root.bRepBodies.item(body_index)
 
         entities = adsk.core.ObjectCollection.create()
         entities.add(body)
@@ -1453,28 +1719,58 @@ class CommandHandler:
         anchor_y: float = 0,
         anchor_z: float = 0,
     ):
-        root = self._root()
+        factors = (scale_x, scale_y, scale_z)
+        nonuniform = any(value is not None for value in factors)
+        if nonuniform and any(value is None for value in factors):
+            raise ValueError("Provide all three nonuniform scale factors")
+        for value in (scale, *(factors if nonuniform else ())):
+            if (
+                type(value) not in (int, float)
+                or not math.isfinite(value) or value <= 0
+            ):
+                raise ValueError("Scale factors must be finite and positive")
+        for value in (anchor_x, anchor_y, anchor_z):
+            if type(value) not in (int, float) or not math.isfinite(value):
+                raise ValueError("Scale anchor must be finite")
+        design = self._design()
+        if design.designType != adsk.fusion.DesignTypes.ParametricDesignType:
+            raise ValueError("Body scaling requires a parametric design")
         body = self._body_by_name(body_name)
-
+        native = body.nativeObject if body.nativeObject else body
+        if not native.isSolid:
+            raise ValueError("Scaling requires a solid BRep body")
+        owner = native.parentComponent
+        point = adsk.core.Point3D.create(anchor_x, anchor_y, anchor_z)
+        if body.assemblyContext:
+            inverse = body.assemblyContext.transform2.copy()
+            if not inverse.invert() or not point.transformBy(inverse):
+                raise ValueError("Cannot transform the scale anchor into its component")
         bodies = adsk.core.ObjectCollection.create()
-        bodies.add(body)
-
-        anchor = adsk.core.Point3D.create(anchor_x, anchor_y, anchor_z)
-
-        scales = root.features.scaleFeatures
-        if scale_x is not None and scale_y is not None and scale_z is not None:
-            inp = scales.createInput(
-                bodies,
-                anchor,
-                adsk.core.ValueInput.createByReal(scale_x),
-                adsk.core.ValueInput.createByReal(scale_y),
-                adsk.core.ValueInput.createByReal(scale_z),
-            )
-        else:
+        bodies.add(native)
+        sketch = owner.sketches.add(owner.xYConstructionPlane)
+        sketch.name = "ScaleAnchor"
+        sketch.is3D = True
+        try:
+            anchor = sketch.sketchPoints.add(sketch.modelToSketchSpace(point))
+            scales = owner.features.scaleFeatures
             inp = scales.createInput(
                 bodies, anchor, adsk.core.ValueInput.createByReal(scale)
             )
-        feat = scales.add(inp)
+            if inp is None:
+                raise RuntimeError("Scale input creation failed")
+            if nonuniform and not inp.setToNonUniform(
+                adsk.core.ValueInput.createByReal(scale_x),
+                adsk.core.ValueInput.createByReal(scale_y),
+                adsk.core.ValueInput.createByReal(scale_z),
+            ):
+                raise RuntimeError("Nonuniform scale input rejected")
+            feat = scales.add(inp)
+            if feat is None:
+                raise RuntimeError("Scale feature creation failed")
+        except Exception:
+            sketch.deleteMe()
+            raise
+        sketch.isVisible = False
         return {"feature_name": feat.name, "scale": scale}
 
     def suppress_feature(self, feature_name: str):
@@ -1572,35 +1868,54 @@ class CommandHandler:
             desktop = os.path.join(os.path.expanduser("~"), "Desktop")
             file_path = os.path.join(desktop, f"{body_name}.step")
 
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        if not isinstance(file_path, str) or not file_path.strip():
+            raise ValueError("STEP destination must be a nonempty file path")
+        destination = Path(file_path).expanduser().resolve()
+        if destination.exists():
+            raise ValueError(
+                "STEP destination already exists; choose an unused file path"
+            )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        file_path = str(destination)
 
-        export_mgr = self._design().exportManager
-        occ = body.assemblyContext  # None if body is at root
-
-        if occ is None:
-            step_opts = export_mgr.createSTEPExportOptions(file_path, body)
-            export_mgr.execute(step_opts)
-            return {"exported": True, "body": body_name, "file_path": file_path}
-
-        # Body lives in a component occurrence: hide siblings so the
-        # occurrence export only contains the target body. Identify
-        # siblings by entityToken, not name, to handle same-name bodies.
-        target_token = body.entityToken
-        hidden = []
-        for i in range(occ.bRepBodies.count):
-            sibling = occ.bRepBodies.item(i)
-            if sibling.entityToken != target_token and sibling.isVisible:
-                sibling.isVisible = False
-                hidden.append(sibling)
-
+        source_document = self.app.activeDocument
+        copied = adsk.fusion.TemporaryBRepManager.get().copy(body)
+        if copied is None:
+            raise RuntimeError("STEP body copy failed")
+        scratch = self.app.documents.add(
+            adsk.core.DocumentTypes.FusionDesignDocumentType
+        )
+        if scratch is None:
+            raise RuntimeError("STEP temporary document creation failed")
         try:
-            step_opts = export_mgr.createSTEPExportOptions(file_path, occ)
-            export_mgr.execute(step_opts)
+            design = adsk.fusion.Design.cast(self.app.activeProduct)
+            if design is None:
+                raise RuntimeError("STEP temporary design is unavailable")
+            design.designType = adsk.fusion.DesignTypes.DirectDesignType
+            isolated = design.rootComponent.bRepBodies.add(copied)
+            if isolated is None:
+                raise RuntimeError("STEP body isolation failed")
+            isolated.name = body_name
+            export_mgr = design.exportManager
+            step_opts = export_mgr.createSTEPExportOptions(
+                file_path, design.rootComponent
+            )
+            if step_opts is None or not export_mgr.execute(step_opts):
+                raise RuntimeError("STEP export failed; inspect before retrying")
+            if not destination.is_file() or destination.stat().st_size == 0:
+                raise RuntimeError("STEP export produced no nonempty output file")
         finally:
-            for sibling in hidden:
-                sibling.isVisible = True
+            try:
+                if not scratch.close(False):
+                    raise RuntimeError("STEP temporary document cleanup failed")
+            finally:
+                if not source_document.activate():
+                    raise RuntimeError("STEP source document reactivation failed")
 
-        return {"exported": True, "body": body_name, "file_path": file_path}
+        return {
+            "exported": True, "body": body_name, "file_path": file_path,
+            "file_size_bytes": destination.stat().st_size,
+        }
 
     def export_f3d(self, file_path: str = None):
         design = self._design()
@@ -2571,17 +2886,19 @@ class CommandHandler:
     # ------------------------------------------------------------------
 
     def measure_distance(self, entity_one: str, entity_two: str):
-        root = self._root()
-
         def get_entity(name):
-            # Try as body
-            for i in range(root.bRepBodies.count):
-                b = root.bRepBodies.item(i)
-                if b.name == name:
-                    return b
-            # Try as point (x,y,z format)
+            try:
+                return self._body_by_name(name)
+            except RuntimeError:
+                pass
             if "," in name:
-                coords = [float(x.strip()) for x in name.split(",")]
+                coords = [float(value.strip()) for value in name.split(",")]
+                if len(coords) != 3 or not all(
+                    math.isfinite(value) for value in coords
+                ):
+                    raise ValueError(
+                        "Measurement points require three finite coordinates"
+                    )
                 return adsk.core.Point3D.create(*coords)
             raise RuntimeError(f"Entity '{name}' not found")
 
@@ -2590,17 +2907,19 @@ class CommandHandler:
 
         measure = self.app.measureManager
         result = measure.measureMinimumDistance(e1, e2)
+        if result is None or result.positionOne is None or result.positionTwo is None:
+            raise RuntimeError("Distance measurement returned no positions")
         return {
             "distance": result.value,
             "point_one": [
-                result.pointOnEntityOne.x,
-                result.pointOnEntityOne.y,
-                result.pointOnEntityOne.z,
+                result.positionOne.x,
+                result.positionOne.y,
+                result.positionOne.z,
             ],
             "point_two": [
-                result.pointOnEntityTwo.x,
-                result.pointOnEntityTwo.y,
-                result.pointOnEntityTwo.z,
+                result.positionTwo.x,
+                result.positionTwo.y,
+                result.positionTwo.z,
             ],
         }
 
@@ -2753,6 +3072,17 @@ class CommandHandler:
         target_type: str = "body",
         face_index: int = None,
     ):
+        if target_type == "body":
+            target = self._body_by_name(target_name)
+        elif target_type == "component":
+            target = self._component_by_name(target_name)
+        elif target_type == "face":
+            body = self._body_by_name(target_name)
+            if type(face_index) is not int or not 0 <= face_index < body.faces.count:
+                raise ValueError("Appearance face index is out of range")
+            target = body.faces.item(face_index)
+        else:
+            raise ValueError("Appearance target type must be body, component or face")
         # Find appearance in library — try both known library names
         app_lib = self.app.materialLibraries.itemByName("Fusion Appearance Library")
         if app_lib is None:
@@ -2791,16 +3121,7 @@ class CommandHandler:
                 f"Could not copy appearance '{appearance_name}' into the design"
             )
 
-        if target_type == "body":
-            body = self._body_by_name(target_name)
-            body.appearance = local
-        elif target_type == "component":
-            comp = self._component_by_name(target_name)
-            comp.appearance = local
-        elif target_type == "face":
-            body = self._body_by_name(target_name)
-            face = body.faces.item(face_index)
-            face.appearance = local
+        target.appearance = local
 
         return {"applied": True, "target": target_name, "appearance": appearance_name}
 
@@ -2816,7 +3137,7 @@ class CommandHandler:
 
         Uses the Appearances.add + Appearance.color API (July 2026), so no
         library copy is needed.  Appearances are reused when the same color
-        is requested again.  opacity 1.0 = fully opaque, 0.0 = invisible.
+        owner = self._component_for_sketch(sketch)
         """
         body = self._body_by_name(body_name)
         design = self._design()
@@ -2954,22 +3275,35 @@ class CommandHandler:
     def thicken_surface(
         self, body_name: str, thickness: float, direction: str = "symmetric"
     ):
-        root = self._root()
+        if (
+            type(thickness) not in (int, float)
+            or not math.isfinite(thickness) or thickness <= 0
+            or direction not in {"positive", "negative", "symmetric"}
+        ):
+            raise ValueError("Use a finite positive thickness and valid direction")
         body = self._body_by_name(body_name)
-
+        native = body.nativeObject if body.nativeObject else body
+        if native.isSolid:
+            raise ValueError("Thickening requires a surface body")
+        owner = native.parentComponent
         faces = adsk.core.ObjectCollection.create()
-        for face in body.faces:
+        for face in native.faces:
             faces.add(face)
-
-        thickens = root.features.thickenFeatures
+        thickens = owner.features.thickenFeatures
+        signed = -thickness if direction == "negative" else thickness
+        side_distance = thickness / 2 if direction == "symmetric" else signed
         inp = thickens.createInput(
             faces,
-            adsk.core.ValueInput.createByReal(thickness),
-            False,
-            adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
+            adsk.core.ValueInput.createByString(f"{side_distance:.17g} cm"),
             direction == "symmetric",
+            adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
+            False,
         )
+        if inp is None:
+            raise RuntimeError("Thicken input creation failed")
         feat = thickens.add(inp)
+        if feat is None:
+            raise RuntimeError("Thicken feature creation failed")
         return {"feature_name": feat.name, "thickness": thickness}
 
     def ruled_surface(

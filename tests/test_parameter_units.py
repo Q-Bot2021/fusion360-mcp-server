@@ -15,6 +15,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -92,6 +93,68 @@ def _calls(node: ast.AST, attr: str) -> list[ast.Call]:
         and isinstance(n.func, ast.Attribute)
         and n.func.attr == attr
     ]
+
+
+def _parameter_method(name):
+    namespace = {}
+    exec(
+        compile(
+            ast.Module(body=[_func(name)], type_ignores=[]),
+            str(ADDON_SERVER / "command_handler.py"),
+            "exec",
+        ),
+        namespace,
+    )
+    return namespace[name]
+
+
+@pytest.mark.parametrize("parameters", [[], [
+    SimpleNamespace(name="Length", value=2, expression="20 mm", unit="mm",
+                    comment="Measured length"),
+    SimpleNamespace(name="Angle", value=1, expression="1 rad", unit="rad",
+                    comment=""),
+]])
+def test_get_parameters_returns_actual_fields_without_mutation(parameters):
+    before = [vars(parameter).copy() for parameter in parameters]
+    handler = SimpleNamespace(
+        _design=lambda: SimpleNamespace(userParameters=parameters)
+    )
+    result = _parameter_method("get_parameters")(handler)
+    assert result == {"parameters": before, "count": len(parameters)}
+    assert [vars(parameter) for parameter in parameters] == before
+
+
+@pytest.mark.parametrize("found, raises", [(False, False), (True, False),
+                                         (True, True)])
+def test_delete_parameter_propagates_api_failure_and_rejects_missing(found, raises):
+    deletions = []
+
+    def delete():
+        deletions.append("AuditValue")
+        if raises:
+            raise RuntimeError("Parameter is referenced")
+        return True
+
+    parameter = SimpleNamespace(deleteMe=delete) if found else None
+    lookups = []
+
+    def lookup(name):
+        lookups.append(name)
+        return parameter
+
+    handler = SimpleNamespace(_design=lambda: SimpleNamespace(
+        userParameters=SimpleNamespace(itemByName=lookup)
+    ))
+    method = _parameter_method("delete_parameter")
+    if not found or raises:
+        with pytest.raises(RuntimeError, match="referenced" if raises else "not found"):
+            method(handler, "AuditValue")
+    else:
+        assert method(handler, "AuditValue") == {
+            "deleted": True, "name": "AuditValue"
+        }
+    assert lookups == ["AuditValue"]
+    assert deletions == (["AuditValue"] if found else [])
 
 
 class TestBuildValueInput:

@@ -1,0 +1,54 @@
+{
+  "status": "drawing_creation_requested",
+  "production_eligible": false,
+  "source_before": {
+    "ok": true,
+    "development_only": true,
+    "document_id": "5bdff340-08c6-4b28-be5f-84d4c75ada39",
+    "document_name": "MCP_FeatureFixture_20261010_181017",
+    "is_saved": true,
+    "data_file_id": "urn:adsk.wipprod:dm.lineage:dD_0_UjcS7G3989F64k-dA",
+    "project_name": "MCP_Dev"
+  },
+  "creation": {
+    "meta": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "**create_sandbox_drawing** OK\n  development_only: True\n  preview_api: True\n  data_file_id: urn:adsk.wipprod:dm.lineage:f9t0FH4MQuOz9dyaz6LuWA\n  name: MCP_FeatureFixture_20261010_181017 Drawing\n  project_name: MCP_Dev",
+        "annotations": null,
+        "meta": null
+      }
+    ],
+    "structuredContent": {
+      "ok": true,
+      "development_only": true,
+      "preview_api": true,
+      "data_file_id": "urn:adsk.wipprod:dm.lineage:f9t0FH4MQuOz9dyaz6LuWA",
+      "name": "MCP_FeatureFixture_20261010_181017 Drawing",
+      "project_name": "MCP_Dev"
+    },
+    "isError": false
+  },
+  "open": {
+    "meta": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "**open_sandbox_drawing** OK\n  development_only: True\n  document_id: ea3879ca-a1dc-4863-bcd0-05864d2589e3\n  document_name: MCP_FeatureFixture_20261010_181017 Drawing\n  is_saved: True\n  data_file_id: urn:adsk.wipprod:dm.lineage:f9t0FH4MQuOz9dyaz6LuWA\n  project_name: MCP_Dev",
+        "annotations": null,
+        "meta": null
+      }
+    ],
+    "structuredContent": {
+      "ok": true,
+      "development_only": true,
+      "document_id": "ea3879ca-a1dc-4863-bcd0-05864d2589e3",
+      "document_name": "MCP_FeatureFixture_20261010_181017 Drawing",
+      "is_saved": true,
+      "data_file_id": "urn:adsk.wipprod:dm.lineage:f9t0FH4MQuOz9dyaz6LuWA",
+      "project_name": "MCP_Dev"
+    },
+    "isError": false
+  }
+}

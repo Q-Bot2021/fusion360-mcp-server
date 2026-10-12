@@ -8,6 +8,32 @@ Read and apply [Development and testing rules](../dev_rules.md) before developin
 - **[E2E]** Every new or changed tool, resource and resource template must pass MCP protocol end-to-end tests and live local-Fusion end-to-end tests before production registration or publication of the change. Unavailable Fusion or skipped tests mean pending acceptance, not success.
 - **[SYNC]** Keep [.claude/CLAUDE.md](../.claude/CLAUDE.md) and [.github/copilot-instructions.md](../.github/copilot-instructions.md) identical. Whenever either file changes, update both in the same change. Only CRLF/LF line-ending differences are allowed; CI enforces equivalence.
 
+## Generic Applicability
+
+All MCP modeling, query and document tools must be generically applicable to any
+given part or design supported by the requested Fusion operation. Use explicit
+targets and appropriate coordinate systems, not test-project, fixture-name,
+stencil-layout, fixed-orientation, root-component or fixed-cloud-project
+assumptions. Test conventions must not become production tool requirements.
+Clearly document and reject unsupported entities and API prerequisites before
+mutation. Preserve all security, validation, consent and no-blind-retry rules.
+Generalize specialized implementations before promotion; a rename is insufficient.
+Verify differing applicable parts, orientations and component contexts through
+unit, protocol and live tests. Keep development maintenance explicitly scoped.
+
+## Audit Ledger Maintenance
+
+Maintain the audit ledger in the same change as every tool creation, update,
+rename, promotion or removal. Update `docs/mechanical/generic-tool-audit.tsv`
+and the affected acceptance entries in `docs/mechanical/tool-status.tsv`; record
+evidence, limitations and pending gates honestly. A skipped test, mock response,
+or production registration is not live acceptance. Reopen acceptance when a
+behavior change invalidates prior evidence; do not carry forward stale checks.
+Regenerate `docs/mechanical/audit-ledger.html` with
+`python -m scripts.audit_mechanical_api docs/mechanical/audit-ledger.html --html`
+and run `tests/test_mechanical_coverage.py` plus `tests/test_instructions_sync.py`.
+The TSV files are authoritative; never hand-edit generated HTML status cells.
+
 ## Overview
 
 This Python MCP server connects AI coding agents to Autodesk Fusion 360 for CAD automation. Agents communicate over stdio; commands are forwarded as JSON to the Fusion360MCP add-in installed in Fusion's AddIns folder.
@@ -55,6 +81,32 @@ Autodesk pages on demand for signatures and behavior. The index contains pointer
 only and is not evidence of installed-version support or MCP acceptance.
 
 ## Adding a Command or Resource
+
+Unit-tested candidates may be registered in an isolated development MCP/add-in
+profile before E2E testing. Normal production discovery remains unchanged until
+protocol and live acceptance plus release eligibility are verified. No production
+enable switch or arbitrary execution is permitted. Stop test sessions and clean
+up temporary scripts/add-ins by recorded ownership and hashes; preserve evidence
+and never delete modified or unrelated files. See `dev_rules.md` for the workflow.
+
+## Electronics Scope Finding
+
+Electronics development is excluded from this MCP. The inspected 2026 API was
+largely preview/read-only; live checks on Fusion 2705.1.25 verified metadata edits
+but no end-to-end path for component insertion, nets, placement, routing, fresh
+ERC/DRC or manufacturing output. Absence of checked members does not prove that
+all alternative APIs are unavailable. Do not claim unsupported authoring or infer
+setters from readable properties. Electronics prototypes and tools were removed;
+do not restore them without explicit scope approval and new acceptance evidence.
+The general API pointer index remains reference data, not capability registration.
+
+## Registration Workflow
+
+Keep the reusable CAD development MCP and Fusion360MCPDev add-in for future work.
+They are isolated from production on loopback port 9877 and exclude electronics.
+`dev_reload_candidates` reloads only fixed, hash-owned CAD handlers, with no code
+or path arguments. Cleanup applies to temporary test artifacts, not removal of
+this shared development infrastructure unless explicitly requested.
 
 1. Implement the candidate handler and mock with unit tests, without normal production registration.
 2. Stage definitions and dispatch only in an isolated test session using the real MCP request handlers.

@@ -6,6 +6,40 @@
 - **[E2E]** Every new or changed MCP tool, resource and resource template must pass both MCP protocol end-to-end tests and live local-Fusion end-to-end tests before production registration or publication of the change. Missing prerequisites, skipped tests and mock success are not live acceptance.
 - **[SYNC]** `.claude/CLAUDE.md` and `.github/copilot-instructions.md` must contain identical agent-neutral instructions. Update both in the same change. CI compares complete content, normalizing only CRLF/LF line endings; do not silently repair drift in CI.
 
+## Generic Applicability
+
+All MCP modeling, query and document tools must be generically applicable to any
+given part or design for which Fusion supports the requested operation. Use
+explicit targets, parameters and entity/sketch coordinate systems, not assumptions
+about a test project, fixture name, stencil layout, fixed XY orientation,
+root-only component or fixed cloud project. Test fixtures may use these
+conventions; production tool contracts must not require them.
+
+Document and reject unsupported geometry, design types and API prerequisites
+clearly before mutation. Preserve security policy, validation, mutation consent,
+document identity checks and the prohibition on blind mutation retries. Generic
+applicability does not mean every operation is valid on every entity.
+
+Do not promote a specialized implementation by merely renaming it. Demonstrate
+unit, protocol and live acceptance on meaningfully different applicable parts,
+orientations and component contexts. Audit existing registrations without
+retroactive disabling; keep fixed development maintenance commands explicitly
+scoped as infrastructure rather than modeling capabilities.
+
+## Audit Ledger Maintenance
+
+Tool creation, updates, renames, promotion and removal require same-change updates
+to `docs/mechanical/generic-tool-audit.tsv` and affected acceptance entries in
+`docs/mechanical/tool-status.tsv`. Keep source-revision evidence and pending gates
+accurate; changed behavior must reopen invalidated acceptance. Skipped tests,
+mock responses and registration alone never justify a passing live gate.
+
+Regenerate the offline report with
+`python -m scripts.audit_mechanical_api docs/mechanical/audit-ledger.html --html`.
+The TSV files are authoritative; do not edit generated HTML status cells by hand.
+Run `tests/test_mechanical_coverage.py` to verify registry coverage and report
+freshness, and `tests/test_instructions_sync.py` for synchronized guidance.
+
 ## Framework and Commands
 
 The project uses pytest, AnyIO, the MCP Python SDK and Ruff. Configuration and development dependencies are in `pyproject.toml`. Tests are discovered under `tests/`. The package requires Python 3.10 or newer; current CI tests Python 3.12 on Ubuntu, not every supported version. Use Python 3.12 when a newer interpreter lacks dependency wheels.
@@ -65,9 +99,18 @@ evidence, then promote eligible candidates to production in a separately reviewe
 change. Disabled code execution and loopback policies apply to both profiles.
 Preview-dependent candidates stay local/non-production even when tests pass.
 
-The reusable development harness is `tests.development_mcp`, paired with the
-`Fusion360MCPDev` add-in on `127.0.0.1:9877`. Production remains on its configured
-port (normally 9876). There is no production CLI/environment enable switch.
+Use the isolated candidate-test pattern in `tests/test_candidate_e2e.py`.
+The reusable CAD development MCP is retained: `tests.development_mcp` and the
+separate `Fusion360MCPDev` add-in on numeric loopback port 9877. Its private event
+and handler modules are isolated from production. `dev_reload_candidates` accepts
+no arguments and reloads only fixed, hash-owned CAD handler modules on Fusion's
+main thread; it never accepts Python, paths or module names or reloads transport.
+Stage reviewed source with `scripts.install_development_addin`, then reload.
+Bootstrap or schema changes may still require restarting the add-in/client.
+Electronics development is excluded; electronics callbacks and fixtures remain
+removed. Removing a domain does not remove the shared development infrastructure.
+There is no production CLI/environment enable switch or arbitrary execution
+exception for development testing.
 
 ### Temporary Test Cleanup
 
@@ -76,8 +119,11 @@ After testing, stop their servers/events, remove temporary installed scripts and
 retire obsolete one-off runner source. Preserve reports needed for acceptance.
 Cleanup must refuse changed files, symlinks and escaped paths and leave unrelated
 files/designs untouched. Keep reusable fixture source and unit tests; remove its
-temporary installation when the session ends. Use the hash-verified
-`scripts.stage_fusion_development` helper and document any cleanup still pending.
+temporary installation when the session ends. Use recorded content hashes for
+ownership verification and document any cleanup still pending. The retained
+development MCP/add-in is reusable infrastructure, not a temporary one-off script;
+do not uninstall it at session end unless explicitly requested. Stop its running
+test session when appropriate, while preserving the installation and client entry.
 
 1. Implement the candidate handler and mock with unit tests, without adding the candidate to the normal production registry.
 2. Stage its definition and dispatch in an isolated test process/session. `build_server()` constructs the same request handlers as the CLI; the SDK memory-session helper supports test-only registry injection. See `tests/test_candidate_e2e.py`. Test-only patches must not be shipped as production flags.

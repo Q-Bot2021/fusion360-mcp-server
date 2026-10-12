@@ -140,6 +140,7 @@ class Fusion360Connection:
         params: dict[str, Any] | None = None,
         retries: int = _MAX_RETRIES,
         timeout: float = _TIMEOUT,
+        mutation: bool = False,
     ) -> dict:
         """Send a JSON command and block until a JSON response arrives.
 
@@ -169,7 +170,7 @@ class Fusion360Connection:
             + "\n"
         )
 
-        is_mutation = command_type in _MUTATION_COMMANDS
+        is_mutation = mutation or command_type in _MUTATION_COMMANDS
         try:
             self._sock.sendall(payload.encode("utf-8"))
             self._sock.settimeout(timeout)

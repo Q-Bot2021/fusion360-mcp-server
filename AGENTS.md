@@ -18,6 +18,45 @@ The add-in uses a CustomEvent + work queue pattern to safely dispatch all Fusion
 
 ## Developer and Security Rules
 
+All MCP tools must be generically applicable to any given part or design supported
+by the requested Fusion operation. Production implementations must not depend on
+test projects, fixture names, stencil layouts, fixed orientations, root-only
+components or fixed cloud projects. Use explicit selections and appropriate
+coordinate systems; reject unsupported inputs clearly before mutation while
+preserving security, validation, consent and no-blind-retry rules. Generalize
+specialized tools before promotion and verify differing applicable parts,
+orientations and component contexts. Development maintenance stays explicitly
+scoped infrastructure. See the generic-applicability gate in dev_rules.md.
+
+Maintain the MCP Audit ledger as you progress. Update it after each verified
+milestone, newly discovered blocker, or change in acceptance status; do not wait
+until the whole task is complete. Keep unverified and blocked work visibly pending.
+
+Maintain `docs/mechanical/generic-tool-audit.tsv`, affected entries in
+`docs/mechanical/tool-status.tsv`, and regenerated
+`docs/mechanical/audit-ledger.html` in the same change as tool creation, updates,
+renames, promotion or removal. Reopen invalidated acceptance and keep pending
+gates visible; mocks, skipped tests and registration are not live acceptance.
+Generate the HTML with `python -m scripts.audit_mechanical_api docs/mechanical/audit-ledger.html --html`;
+never edit generated status cells by hand. Run the coverage/freshness and
+instruction synchronization tests.
+
+Retain the shared CAD development MCP (`tests.development_mcp`) and
+Fusion360MCPDev add-in on loopback 9877 for future development. It excludes
+electronics and stays separate from production. Temporary script cleanup must
+not remove this reusable infrastructure without an explicit request.
+
+Electronics development is excluded. Research on Fusion 2705.1.25 verified only
+limited metadata editing, not end-to-end schematic/PCB authoring, routing, fresh
+ERC/DRC or manufacturing output. The inspected API was largely preview/read-only.
+Electronics prototypes were removed; do not restore them without explicit scope
+approval and new acceptance evidence. General API pointers are not registered tools.
+
+Unit-tested candidates may use an isolated development registry before E2E tests;
+production promotion still requires protocol/live evidence and release eligibility.
+Temporary test scripts/add-ins must be stopped and cleaned by recorded ownership
+and hashes. Preserve modified/unrelated files and acceptance evidence.
+
 Read [dev_rules.md](dev_rules.md) before developing or registering capabilities.
 All new executable code requires unit tests; changed behavior requires regression
 tests. New or changed tools, resources and templates require passing MCP protocol

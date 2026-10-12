@@ -10,6 +10,7 @@ mutation results carry a ``deltas`` sub-dict, and an ``__mock_error__``
 sentinel in params forces a classified error response for tests.
 """
 
+import math
 from typing import Any
 
 from .hints import classify as _classify
@@ -19,6 +20,8 @@ from .hints import classify as _classify
 _MUTATION_MOCKS: frozenset[str] = frozenset(
     {
         "extrude",
+        "extrude_sketch_entities",
+        "chamfer_edges",
         "revolve",
         "sweep",
         "loft",
@@ -124,18 +127,266 @@ def _ping(_p: dict) -> dict:
 def _get_scene_info(_p: dict) -> dict:
     return {
         "design_name": "MockDesign",
-        "bodies": ["Body1"],
-        "sketches": ["Sketch1"],
+        "bodies": [{"name": "Body1", "component_name": "RootComponent",
+                    "occurrence_path": "root", "volume": 1, "area": 6,
+                    "material": None, "is_visible": True}],
+        "sketches": [{"name": "Sketch1", "component_name": "RootComponent",
+                      "profile_count": 1, "is_visible": True}],
         "features": ["Extrude1"],
-        "components": ["RootComponent"],
+        "components": [{"name": "RootComponent", "occurrence_path": "root",
+                        "is_visible": True}],
+        "bodies_count": 1, "sketches_count": 1, "features_count": 1,
+        "components_count": 1, "timeline_count": 1,
+        "design_type": "DesignProductType",
+        "camera": {"eye": [0, 0, 1], "target": [0, 0, 0], "up_vector": [0, 1, 0]},
+    }
+
+
+def _get_feature_health(p: dict) -> dict:
+    offset = p.get("offset", 0)
+    limit = p.get("limit", 100)
+    if (
+        type(offset) is not int
+        or type(limit) is not int
+        or offset < 0
+        or not 1 <= limit <= 200
+    ):
+        return {
+            "ok": False,
+            "error_kind": "INVALID_INPUT",
+            "error_message": "Invalid pagination",
+        }
+    features = [
+        {
+            "index": 0,
+            "name": "Extrude1",
+            "object_type": "adsk::fusion::ExtrudeFeature",
+            "health_state": 0,
+            "message": "",
+        }
+    ]
+    return {
+        "component_name": p.get("component_name") or "Root",
+        "total": 1,
+        "offset": offset,
+        "features": features[offset : offset + limit],
+        "next_offset": None,
+    }
+
+
+def _get_document_state(p: dict) -> dict:
+    return {
+        "document_id": "mock-document",
+        "document_name": "MockDesign",
+        "is_saved": False,
+        "data_file_id": None,
+        "project_name": None,
+    }
+
+
+def _create_design(p: dict) -> dict:
+    name = p.get("name")
+    if (
+        not isinstance(name, str)
+        or not name.strip()
+        or not 1 <= len(name) <= 100
+        or any(character in name for character in "/\\\r\n\t")
+    ):
+        return {
+            "ok": False,
+            "error_kind": "INVALID_INPUT",
+            "error_message": "Use a bounded design name without path separators",
+        }
+    return {
+        "document_id": "mock-new-document",
+        "document_name": name,
+        "is_saved": False,
+        "data_file_id": None,
+        "project_name": None,
+    }
+
+
+def _candidate_error(message):
+    return {"ok": False, "error_kind": "INVALID_INPUT", "error_message": message}
+
+
+def _draw_sketch_text(p):
+    text = p.get("text", "")
+    if (
+        not all(
+            math.isfinite(p.get(key, 0))
+            for key in ("x", "y", "height", "width", "box_height")
+        )
+        or not isinstance(text, str)
+        or not 1 <= len(text) <= 100
+        or any(character in text for character in "'\\\r\n")
+        or not p.get("sketch_name")
+        or not 0.03 <= p.get("height", 0) <= 2
+        or p.get("width", 0) <= 0
+        or p.get("box_height", 0) < p.get("height", 0)
+    ):
+        return _candidate_error("Invalid literal text or text rectangle")
+    return {
+        "simulated": True,
+        "sketch_name": p["sketch_name"],
+        "text": text,
+        "text_count": 1,
+    }
+
+
+def _extrude_sketch_entities(p):
+    if (
+        not math.isfinite(p.get("distance", 0))
+        or p.get("entity_type") not in {"texts", "profiles"}
+        or p.get("operation") not in {"cut", "join", "new_body"}
+        or not 0 < abs(p.get("distance", 0)) <= 10
+        or not p.get("sketch_name")
+        or not p.get("feature_name")
+    ):
+        return _candidate_error("Invalid sketch extrusion arguments")
+    return {
+        "simulated": True,
+        "feature_name": p["feature_name"],
+        "entity_count": 1,
+        "distance_cm": p["distance"],
+        "health_state": 0,
+        "message": "",
+    }
+
+
+def _get_body_topology(p):
+    offset, limit = p.get("offset", 0), p.get("limit", 100)
+    if (
+        not p.get("body_name")
+        or type(offset) is not int
+        or offset < 0
+        or type(limit) is not int
+        or not 1 <= limit <= 200
+    ):
+        return _candidate_error("Invalid topology pagination or body")
+    entity_type = p.get("entity_type", "edges")
+    if entity_type not in {"edges", "faces"}:
+        return _candidate_error("Unsupported topology entity type")
+    if entity_type == "faces":
+        faces = [
+            {
+                "index": index,
+                "bounding_box": {"min": [0, 0, 0], "max": [1, 1, 0]},
+                "area": 1.0,
+                "surface_type": "mock-plane",
+            }
+            for index in range(6)
+        ]
+        return {
+            "simulated": True, "body_name": p["body_name"],
+            "entity_type": "faces", "edge_count": 12, "face_count": 6,
+            "faces": faces[offset : offset + limit], "next_offset": None,
+        }
+    rows = [
+        {
+            "index": 0,
+            "bounding_box": {"min": [0, 0, 0], "max": [1, 0, 0]},
+            "face_indices": [0, 1],
+        }
+    ]
+    return {
+        "simulated": True,
+        "body_name": p["body_name"],
+        "edge_count": 1,
+        "face_count": 2,
+        "edges": rows[offset : offset + limit],
+        "next_offset": None,
+    }
+
+
+def _chamfer_edges(p):
+    edges, faces = p.get("edge_indices", []), p.get("reference_face_indices", [])
+    if (
+        not all(
+            math.isfinite(p.get(key, 0)) for key in ("distance_one", "distance_two")
+        )
+        or not isinstance(edges, list)
+        or not 1 <= len(edges) <= 200
+        or any(type(index) is not int or index < 0 for index in edges)
+        or len(set(edges)) != len(edges)
+        or not isinstance(faces, list)
+        or len(faces) != len(edges)
+        or any(type(index) is not int or index < 0 for index in faces)
+        or not p.get("body_name")
+        or not p.get("feature_name")
+        or p.get("distance_one", 0) <= 0
+        or p.get("distance_two", 0) <= 0
+    ):
+        return _candidate_error("Invalid explicit-edge chamfer arguments")
+    return {
+        "simulated": True,
+        "feature_name": p["feature_name"],
+        "edge_count": len(edges),
+        "health_state": 0,
+        "message": "",
+    }
+
+
+def _save_design(p):
+    if not p.get("document_id"):
+        return _candidate_error("Document identity is required")
+    if p.get("name"):
+        if (
+            bool(p.get("project_id")) == bool(p.get("project_name"))
+            or not 1 <= len(p["name"]) <= 100
+            or any(character in p["name"] for character in "/\\\r\n\t")
+        ):
+            return _candidate_error(
+                "First save requires a bounded name and one project target"
+            )
+    elif p.get("project_id") or p.get("project_name"):
+        return _candidate_error("Project target requires a first-save name")
+    return {
+        "simulated": True,
+        "save_accepted": True,
+        "metadata_pending": False,
+        "document_id": p["document_id"],
+        "document_name": p.get("name", "MockDesign"),
+        "is_saved": True,
+        "data_file_id": "mock-file",
+        "project_name": p.get("project_name", "MockProject"),
     }
 
 
 def _get_object_info(p: dict) -> dict:
     name = p.get("name", "Unknown")
+    kind = p.get("entity_type", "auto")
+    occurrence_path, component_name = (
+        p.get("occurrence_path", ""),
+        p.get("component_name", ""),
+    )
+    if (
+        kind not in {"auto", "body", "sketch"}
+        or (occurrence_path and component_name)
+        or (kind == "sketch" and occurrence_path)
+        or (kind == "body" and component_name)
+    ):
+        return _candidate_error("Invalid explicit object target")
+    if kind == "sketch" or component_name:
+        return {
+            "found": True,
+            "name": name,
+            "type": "sketch",
+            "is_visible": True,
+            "profile_count": 1,
+            "curve_count": 4,
+        }
     return {
+        "found": True,
         "name": name,
-        "type": "BRepBody",
+        "type": "body",
+        "volume": 1,
+        "area": 6,
+        "material": None,
+        "is_visible": True,
+        "faces_count": 6,
+        "edges_count": 12,
+        "vertices_count": 8,
         "faces": 6,
         "edges": 12,
         "vertices": 8,
@@ -198,20 +449,35 @@ def _revolve(p: dict) -> dict:
 
 
 def _fillet(p: dict) -> dict:
-    return {"body_name": p.get("body_name", "Body1"), "radius": p.get("radius", 0.1)}
+    return {
+        "simulated": True,
+        "body_name": p.get("body_name", "Body1"),
+        "radius": p.get("radius", 0.1),
+        "edge_selection": p.get("edge_selection", "all"),
+        "edge_indices": p.get("edge_indices"),
+        "occurrence_path": p.get("occurrence_path", ""),
+    }
 
 
 def _chamfer(p: dict) -> dict:
     return {
+        "simulated": True,
         "body_name": p.get("body_name", "Body1"),
         "distance": p.get("distance", 0.1),
+        "edge_selection": p.get("edge_selection", "all"),
+        "edge_indices": p.get("edge_indices"),
+        "occurrence_path": p.get("occurrence_path", ""),
     }
 
 
 def _shell(p: dict) -> dict:
     return {
+        "simulated": True,
         "body_name": p.get("body_name", "Body1"),
         "thickness": p.get("thickness", 0.1),
+        "face_selection": p.get("face_selection", "top"),
+        "face_indices": p.get("face_indices"),
+        "occurrence_path": p.get("occurrence_path", ""),
     }
 
 
@@ -219,6 +485,7 @@ def _mirror(p: dict) -> dict:
     return {
         "body_name": p.get("body_name", "Body1"),
         "mirror_plane": p.get("mirror_plane", "yz"),
+        "occurrence_path": p.get("occurrence_path", ""),
         "new_body_name": "Body1_mirrored",
     }
 
@@ -378,7 +645,13 @@ def _list_components(_p: dict) -> dict:
 def _export_step(p: dict) -> dict:
     name = p.get("body_name", "Body1")
     path = p.get("file_path", f"~/Desktop/{name}.step")
-    return {"body_name": name, "file_path": path}
+    if not isinstance(path, str) or not path.strip():
+        return {
+            "ok": False,
+            "error_kind": "INVALID_INPUT",
+            "error_message": "STEP destination must be a nonempty file path",
+        }
+    return {"exported": True, "body": name, "file_path": path, "simulated": True}
 
 
 def _export_f3d(p: dict) -> dict:
@@ -625,9 +898,29 @@ def _offset_faces(p: dict) -> dict:
 
 
 def _scale_body(p: dict) -> dict:
+    allowed = {"body_name", "scale", "scale_x", "scale_y", "scale_z",
+               "anchor_x", "anchor_y", "anchor_z"}
+    if (
+        set(p) - allowed or not isinstance(p.get("body_name"), str)
+        or not p["body_name"]
+    ):
+        return _candidate_error("Scaling requires a named body and supported arguments")
+    factors = [p.get(key) for key in ("scale_x", "scale_y", "scale_z")]
+    nonuniform = any(value is not None for value in factors)
+    if nonuniform and any(value is None for value in factors):
+        return _candidate_error("Provide all three nonuniform scale factors")
+    for value in [p.get("scale"), *(factors if nonuniform else [])]:
+        if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
+            return _candidate_error("Scale factors must be finite and positive")
+    for key in ("anchor_x", "anchor_y", "anchor_z"):
+        value = p.get(key, 0)
+        if type(value) not in (int, float) or not math.isfinite(value):
+            return _candidate_error("Scale anchor must be finite")
     return {
-        "body_name": p.get("body_name", "Body1"),
-        "scale": p.get("scale", 1.0),
+        "body_name": p["body_name"],
+        "scale": p["scale"],
+        "feature_name": "Scale_mock",
+        "simulated": True,
     }
 
 
@@ -1004,9 +1297,17 @@ def _default_mock(p: dict) -> dict:
 # ── dispatch table ────────────────────────────────────────────────────
 
 _DISPATCH: dict[str, Any] = {
+    "get_feature_health": _get_feature_health,
+    "get_document_state": _get_document_state,
+    "create_design": _create_design,
     "ping": _ping,
     "get_scene_info": _get_scene_info,
     "get_object_info": _get_object_info,
+    "draw_sketch_text": _draw_sketch_text,
+    "extrude_sketch_entities": _extrude_sketch_entities,
+    "get_body_topology": _get_body_topology,
+    "chamfer_edges": _chamfer_edges,
+    "save_design": _save_design,
     "get_bounding_box": _get_bounding_box,
     "create_sketch": _create_sketch,
     "draw_rectangle": _draw_rectangle,

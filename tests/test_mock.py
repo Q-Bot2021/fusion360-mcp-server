@@ -6,6 +6,26 @@ from fusion360_mcp.mock import _DISPATCH, mock_command
 from fusion360_mcp.tools import TOOLS
 
 
+@pytest.mark.parametrize("arguments", [
+    {"body_name": "Part", "scale": 0},
+    {"body_name": "Part", "scale": float("nan")},
+    {"body_name": "Part", "scale": 2, "scale_x": 3},
+    {"body_name": "Part", "scale": 2, "anchor_x": float("inf")},
+    {"body_name": "Part", "scale": 2, "code": "forbidden"},
+])
+def test_scale_mock_rejects_invalid_contract(arguments):
+    result = mock_command("scale_body", arguments)
+    assert result["ok"] is False and result["error_kind"] == "INVALID_INPUT"
+
+
+def test_scale_mock_success_is_explicitly_simulated():
+    result = mock_command("scale_body", {
+        "body_name": "Part", "scale": 1, "scale_x": 2,
+        "scale_y": 3, "scale_z": .5,
+    })
+    assert result["simulated"] is True and result["feature_name"] == "Scale_mock"
+
+
 class TestMockDispatchCoverage:
     """Every tool defined in tools.py must have a mock handler."""
 
@@ -27,6 +47,15 @@ class TestMockResponseStructure:
 
 
 class TestMockPing:
+    def test_promoted_read_only_queries(self):
+        features = mock_command("get_feature_health", {"offset": 1, "limit": 1})
+        assert features["features"] == [] and features["total"] == 1
+        assert "deltas" not in features and "development_only" not in features
+        assert mock_command("get_feature_health", {"limit": 0})["ok"] is False
+        state = mock_command("get_document_state", {})
+        assert state["is_saved"] is False and state["data_file_id"] is None
+        assert "deltas" not in state and "development_only" not in state
+
     def test_ping_returns_pong(self):
         result = mock_command("ping")
         assert result["status"] == "pong"
@@ -54,10 +83,13 @@ class TestMockSceneQuery:
         assert len(result["center"]) == 3
 
     def test_import_mesh(self):
-        result = mock_command("import_mesh", {
-            "file_path": "/tmp/wheel_arch.stl",
-            "units": "mm",
-        })
+        result = mock_command(
+            "import_mesh",
+            {
+                "file_path": "/tmp/wheel_arch.stl",
+                "units": "mm",
+            },
+        )
         assert result["imported"] is True
         assert result["file_path"] == "/tmp/wheel_arch.stl"
         assert result["units"] == "mm"
@@ -65,38 +97,52 @@ class TestMockSceneQuery:
         assert "bounding_box" in result
 
     def test_create_box_parametric_numeric(self):
-        result = mock_command("create_box_parametric", {
-            "length": 56, "width": 30, "height": 25,
-        })
+        result = mock_command(
+            "create_box_parametric",
+            {
+                "length": 56,
+                "width": 30,
+                "height": 25,
+            },
+        )
         assert result["created"] is True
         assert result["length"] == 56
         assert "body_name" in result
         assert "sketch_name" in result
 
     def test_create_box_parametric_expression(self):
-        result = mock_command("create_box_parametric", {
-            "length": "boxL",
-            "width": "boxW",
-            "height": "boxH - wall_t",
-            "body_name": "BoxRechts",
-        })
+        result = mock_command(
+            "create_box_parametric",
+            {
+                "length": "boxL",
+                "width": "boxW",
+                "height": "boxH - wall_t",
+                "body_name": "BoxRechts",
+            },
+        )
         assert result["body_name"] == "BoxRechts"
         assert result["height"] == "boxH - wall_t"
 
     def test_export_unified_infers_format(self):
-        result = mock_command("export", {
-            "body_name": "BoxRechts",
-            "file_path": "/tmp/BoxRechts.step",
-        })
+        result = mock_command(
+            "export",
+            {
+                "body_name": "BoxRechts",
+                "file_path": "/tmp/BoxRechts.step",
+            },
+        )
         assert result["exported"] is True
         assert result["format"] == "step"
         assert result["body"] == "BoxRechts"
 
     def test_export_unified_explicit_format(self):
-        result = mock_command("export", {
-            "format": "stl",
-            "body_name": "Part1",
-        })
+        result = mock_command(
+            "export",
+            {
+                "format": "stl",
+                "body_name": "Part1",
+            },
+        )
         assert result["format"] == "stl"
 
 
@@ -154,8 +200,16 @@ class TestMockFeatures:
         assert result["body_name"] == "Box"
 
     def test_mirror(self):
-        result = mock_command("mirror", {"mirror_plane": "xz", "body_name": "Box"})
+        result = mock_command(
+            "mirror",
+            {
+                "mirror_plane": "xz",
+                "body_name": "Box",
+                "occurrence_path": "Assembly:1+Part:1",
+            },
+        )
         assert result["mirror_plane"] == "xz"
+        assert result["occurrence_path"] == "Assembly:1+Part:1"
         assert "new_body_name" in result
 
     def test_create_hole_reports_the_keys_agents_verify_against(self):
@@ -334,10 +388,180 @@ class TestMockAssembly:
 
 
 class TestMockExport:
+    def test_explicit_edge_selector_fields_are_accepted_by_geometry_mocks(self):
+        for tool, args in (
+            (
+                "fillet",
+                {
+                    "body_name": "Part",
+                    "radius": 0.1,
+                    "edge_indices": [0],
+                    "occurrence_path": "Assembly:1",
+                },
+            ),
+            (
+                "chamfer",
+                {
+                    "body_name": "Part",
+                    "distance": 0.1,
+                    "edge_indices": [0],
+                    "occurrence_path": "root",
+                },
+            ),
+        ):
+            assert mock_command(tool, args)["ok"]
+
+    def test_fillet_and_chamfer_mocks_preserve_explicit_targets(self):
+        for tool, arguments in (
+            (
+                "fillet",
+                {
+                    "body_name": "Part",
+                    "radius": 0.1,
+                    "edge_indices": [2],
+                    "occurrence_path": "Assembly:1+Part:1",
+                },
+            ),
+            (
+                "chamfer",
+                {
+                    "body_name": "Part",
+                    "distance": 0.1,
+                    "edge_indices": [3],
+                    "occurrence_path": "root",
+                },
+            ),
+        ):
+            result = mock_command(tool, arguments)
+            assert result["simulated"]
+            assert result["edge_indices"] == arguments["edge_indices"]
+            assert result["occurrence_path"] == arguments["occurrence_path"]
+
+    def test_shell_mock_preserves_explicit_face_target(self):
+        result = mock_command("shell", {
+            "body_name": "Part", "thickness": .1,
+            "face_indices": [2], "occurrence_path": "Assembly:1+Part:1",
+        })
+        assert result["simulated"]
+        assert result["face_indices"] == [2]
+        assert result["occurrence_path"] == "Assembly:1+Part:1"
+
+    def test_body_topology_mock_can_list_faces(self):
+        result = mock_command(
+            "get_body_topology", {"body_name": "Part", "entity_type": "faces"}
+        )
+        assert result["simulated"] and result["entity_type"] == "faces"
+        assert result["faces"][0]["surface_type"] == "mock-plane"
+
+    def test_component_object_info_contract(self):
+        body = mock_command(
+            "get_object_info", {"name": "Part", "occurrence_path": "Nested:1"}
+        )
+        assert body["found"] and body["type"] == "body" and body["faces_count"] == 6
+        sketch = mock_command(
+            "get_object_info",
+            {"name": "Labels", "entity_type": "sketch", "component_name": "Nested"},
+        )
+        assert sketch["type"] == "sketch"
+        assert (
+            mock_command(
+                "get_object_info",
+                {"name": "Part", "entity_type": "body", "component_name": "Nested"},
+            )["ok"]
+            is False
+        )
+
+    def test_generic_geometry_mock_rejects_nonfinite_values(self):
+        assert (
+            mock_command(
+                "extrude_sketch_entities",
+                {
+                    "sketch_name": "Labels",
+                    "entity_type": "texts",
+                    "distance": float("nan"),
+                    "operation": "cut",
+                    "feature_name": "Text",
+                },
+            )["ok"]
+            is False
+        )
+        assert (
+            mock_command(
+                "chamfer_edges",
+                {
+                    "body_name": "Part",
+                    "edge_indices": [0],
+                    "reference_face_indices": [0],
+                    "distance_one": float("inf"),
+                    "distance_two": 0.1,
+                    "feature_name": "Bevel",
+                },
+            )["ok"]
+            is False
+        )
+
+    @pytest.mark.parametrize(
+        "tool,arguments",
+        [
+            (
+                "draw_sketch_text",
+                {
+                    "sketch_name": "Labels",
+                    "text": "20 mm",
+                    "height": 0.1,
+                    "width": 1,
+                    "box_height": 0.2,
+                },
+            ),
+            (
+                "extrude_sketch_entities",
+                {
+                    "sketch_name": "Labels",
+                    "entity_type": "texts",
+                    "operation": "cut",
+                    "distance": -0.001,
+                    "feature_name": "Text",
+                },
+            ),
+            ("get_body_topology", {"body_name": "Part"}),
+            (
+                "chamfer_edges",
+                {
+                    "body_name": "Part",
+                    "edge_indices": [0],
+                    "reference_face_indices": [0],
+                    "distance_one": 0.1,
+                    "distance_two": 0.2,
+                    "feature_name": "Bevel",
+                },
+            ),
+            (
+                "save_design",
+                {
+                    "document_id": "mock-document",
+                    "name": "Part",
+                    "project_name": "Engineering",
+                },
+            ),
+        ],
+    )
+    def test_generic_candidate_mocks_are_explicit(self, tool, arguments):
+        result = mock_command(tool, arguments)
+        assert result["simulated"] and result["ok"]
+        rejected = mock_command(tool, {})
+        assert rejected["ok"] is False
+        assert rejected["error_kind"] == "INVALID_INPUT"
+
     def test_export_step(self):
         result = mock_command("export_step", {"body_name": "Shaft"})
-        assert result["body_name"] == "Shaft"
+        assert result["body"] == "Shaft"
+        assert result["exported"] and result["simulated"]
         assert "file_path" in result
+
+    def test_export_step_rejects_empty_destination(self):
+        result = mock_command("export_step", {"body_name": "Shaft", "file_path": ""})
+        assert result["ok"] is False
+        assert result["error_kind"] == "INVALID_INPUT"
 
     def test_export_f3d(self):
         result = mock_command("export_f3d", {})
@@ -353,17 +577,19 @@ class TestMockExport:
             assert v["path"].endswith(f"{v['view']}.png")
 
     def test_export_view_sheet_custom(self):
-        result = mock_command("export_view_sheet", {
-            "title": "Orb v0.4",
-            "views": ["iso", "front", "right"],
-            "image_size": [1920, 1080],
-            "output_dir": "/tmp/orb_views",
-        })
+        result = mock_command(
+            "export_view_sheet",
+            {
+                "title": "Orb v0.4",
+                "views": ["iso", "front", "right"],
+                "image_size": [1920, 1080],
+                "output_dir": "/tmp/orb_views",
+            },
+        )
         assert result["title"] == "Orb v0.4"
         assert result["image_size"] == [1920, 1080]
         assert result["output_dir"] == "/tmp/orb_views"
-        assert [v["view"] for v in result["views"]] == \
-            ["iso", "front", "right"]
+        assert [v["view"] for v in result["views"]] == ["iso", "front", "right"]
 
 
 class TestMockParameters:

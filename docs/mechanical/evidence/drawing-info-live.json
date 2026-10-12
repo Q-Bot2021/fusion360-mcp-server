@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "development_only": true,
+  "preview_api": true,
+  "document_name": "MCP_FeatureFixture_20261010_181017 Drawing",
+  "document_id": "ea3879ca-a1dc-4863-bcd0-05864d2589e3",
+  "active_sheet_name": "MCP_FeatureFixture_20261010_181017",
+  "object_type": "adsk::drawing::Drawing"
+}

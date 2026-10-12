@@ -7,12 +7,42 @@ JSON Schema that the MCP SDK validates before forwarding arguments.
 
 import mcp.types as types
 
+DIRECT_TOOL_CALLS = (
+    "For user modeling workflows, call each MCP tool directly through the "
+    "client so every operation and result is visible in the client. "
+    "Do not write or run orchestration scripts, shell runners, or custom MCP "
+    "clients to perform or batch the user's modeling operations. "
+    "This does not prohibit test harnesses for MCP development and acceptance. "
+    "When the user provides feedback or requests a correction to an existing "
+    "design, inspect and edit that same document in place, preserving "
+    "unaffected geometry and annotations. Verify the intended document is "
+    "active before any mutation. Do not create a new document, duplicate, or "
+    "replacement revision to address feedback unless the user explicitly "
+    "requests or approves it. If the required in-place edit is unsupported, "
+    "explain the limitation and ask for approval before creating a replacement; "
+    "do not silently rebuild the design in another document."
+)
+TEXT_VISIBILITY_REVIEW = (
+    "When creating text, reserve enough space to prevent unintended wrapping "
+    "and keep all glyphs clear of holes, chamfers, edges, and other features. "
+    "Call render_view directly and visually inspect the returned image after "
+    "text placement, after text extrusion or engraving, and after subsequent "
+    "operations that could affect text. Verify every label is readable from "
+    "the intended viewing surface, without wrapping, clipping, overlap, or "
+    "missing glyphs. Correct defects before continuing or declaring completion; "
+    "feature health, bounding boxes, and successful tool results are not "
+    "substitutes for visual review."
+)
+
 TOOLS: list[dict] = [
     # ── scene / query ────────────────────────────────────────────────
     {
         "name": "get_scene_info",
         "title": "Get Scene Info",
-        "description": "Get design name, bodies, sketches, features, camera info",
+        "description": (
+            "Get design name, all root and nested body instances, sketches by "
+            "owning component, component occurrence paths, feature counts and camera."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {},
@@ -21,12 +51,21 @@ TOOLS: list[dict] = [
     {
         "name": "get_object_info",
         "title": "Get Object Info",
-        "description": "Get detailed info about a named body or sketch",
+        "description": (
+            "Inspect a uniquely named body or sketch across the design. Bodies "
+            "in components use occurrence proxies and assembly-coordinate bounds. "
+            "Duplicate names are rejected: choose entity_type and occurrence_path "
+            "(full occurrence path, or 'root') for a body, or component_name "
+            "for a sketch. Missing objects return found=false."
+        ),
         "inputSchema": {
             "type": "object",
             "required": ["name"],
             "properties": {
                 "name": {"type": "string", "description": "Object name"},
+                "entity_type": {"enum": ["auto", "body", "sketch"]},
+                "occurrence_path": {"type": "string"},
+                "component_name": {"type": "string"},
             },
         },
     },
@@ -54,7 +93,10 @@ TOOLS: list[dict] = [
     {
         "name": "create_sketch",
         "title": "Create Sketch",
-        "description": "Create a new sketch on xy/yz/xz plane, optionally offset",
+        "description": (
+            "Create a sketch on a uniquely named component's local xy/yz/xz "
+            "plane, optionally offset. component_name defaults to root."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -67,13 +109,17 @@ TOOLS: list[dict] = [
                     "type": "number",
                     "description": "Offset distance from the plane (cm)",
                 },
+                "component_name": {"type": "string"},
             },
         },
     },
     {
         "name": "draw_rectangle",
         "title": "Draw Rectangle",
-        "description": "Draw a rectangle in the most recent sketch",
+        "description": (
+            "Draw in sketch-local coordinates. Optionally target sketch_name "
+            "and component_name; defaults to latest root sketch."
+        ),
         "inputSchema": {
             "type": "object",
             "required": ["width", "height"],
@@ -83,13 +129,18 @@ TOOLS: list[dict] = [
                 "origin_x": {"type": "number", "default": 0},
                 "origin_y": {"type": "number", "default": 0},
                 "origin_z": {"type": "number", "default": 0},
+                "sketch_name": {"type": "string"},
+                "component_name": {"type": "string"},
             },
         },
     },
     {
         "name": "draw_circle",
         "title": "Draw Circle",
-        "description": "Draw a circle in the most recent sketch",
+        "description": (
+            "Draw in sketch-local coordinates. Optionally target sketch_name "
+            "and component_name; defaults to latest root sketch."
+        ),
         "inputSchema": {
             "type": "object",
             "required": ["radius"],
@@ -98,13 +149,18 @@ TOOLS: list[dict] = [
                 "center_x": {"type": "number", "default": 0},
                 "center_y": {"type": "number", "default": 0},
                 "center_z": {"type": "number", "default": 0},
+                "sketch_name": {"type": "string"},
+                "component_name": {"type": "string"},
             },
         },
     },
     {
         "name": "draw_line",
         "title": "Draw Line",
-        "description": "Draw a line in the most recent sketch",
+        "description": (
+            "Draw in sketch-local coordinates. Optionally target sketch_name "
+            "and component_name; defaults to latest root sketch."
+        ),
         "inputSchema": {
             "type": "object",
             "required": ["start_x", "start_y", "end_x", "end_y"],
@@ -115,6 +171,8 @@ TOOLS: list[dict] = [
                 "end_x": {"type": "number"},
                 "end_y": {"type": "number"},
                 "end_z": {"type": "number", "default": 0},
+                "sketch_name": {"type": "string"},
+                "component_name": {"type": "string"},
             },
         },
     },
@@ -139,6 +197,8 @@ TOOLS: list[dict] = [
                     "enum": ["positive", "negative", "symmetric"],
                     "default": "positive",
                 },
+                "sketch_name": {"type": "string"},
+                "component_name": {"type": "string"},
             },
         },
     },
@@ -163,13 +223,21 @@ TOOLS: list[dict] = [
                     "enum": ["new_body", "join", "cut", "intersect"],
                     "default": "new_body",
                 },
+                "sketch_name": {"type": "string"},
+                "component_name": {"type": "string"},
             },
         },
     },
     {
         "name": "fillet",
         "title": "Fillet Edges",
-        "description": "Round edges of a body",
+        "description": (
+            "Round edges of a uniquely targeted solid body. Prefer explicit "
+            "edge_indices from current body topology for any orientation; "
+            "occurrence_path selects a specific component instance. Legacy "
+            "top/bottom/vertical selectors use world Z. Component edits affect "
+            "all occurrences sharing that component definition."
+        ),
         "inputSchema": {
             "type": "object",
             "required": ["radius"],
@@ -181,6 +249,23 @@ TOOLS: list[dict] = [
                     "type": "string",
                     "enum": ["all", "top", "bottom", "vertical"],
                     "default": "all",
+                    "description": (
+                        "Legacy world-Z selector; prefer explicit edge_indices "
+                        "for arbitrary orientation."
+                    ),
+                },
+                "edge_indices": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 200,
+                    "uniqueItems": True,
+                    "items": {"type": "integer", "minimum": 0},
+                },
+                "occurrence_path": {
+                    "type": "string",
+                    "description": (
+                        "Full occurrence path for same-named component bodies."
+                    ),
                 },
             },
         },
@@ -188,7 +273,13 @@ TOOLS: list[dict] = [
     {
         "name": "chamfer",
         "title": "Chamfer Edges",
-        "description": "Chamfer edges of a body",
+        "description": (
+            "Chamfer edges of a uniquely targeted solid body. Prefer explicit "
+            "edge_indices from current body topology for any orientation; "
+            "occurrence_path selects a specific component instance. Legacy "
+            "top/bottom/vertical selectors use world Z. Component edits affect "
+            "all occurrences sharing that component definition."
+        ),
         "inputSchema": {
             "type": "object",
             "required": ["distance"],
@@ -200,6 +291,23 @@ TOOLS: list[dict] = [
                     "type": "string",
                     "enum": ["all", "top", "bottom", "vertical"],
                     "default": "all",
+                    "description": (
+                        "Legacy world-Z selector; prefer explicit edge_indices "
+                        "for arbitrary orientation."
+                    ),
+                },
+                "edge_indices": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 200,
+                    "uniqueItems": True,
+                    "items": {"type": "integer", "minimum": 0},
+                },
+                "occurrence_path": {
+                    "type": "string",
+                    "description": (
+                        "Full occurrence path for same-named component bodies."
+                    ),
                 },
             },
         },
@@ -207,7 +315,11 @@ TOOLS: list[dict] = [
     {
         "name": "shell",
         "title": "Shell Body",
-        "description": "Hollow out a body by removing a face",
+        "description": (
+            "Hollow a uniquely targeted solid body. Prefer explicit face_indices "
+            "from current body topology for any orientation; occurrence_path "
+            "selects a component instance. Legacy top/bottom selectors use world Z."
+        ),
         "inputSchema": {
             "type": "object",
             "required": ["thickness"],
@@ -220,6 +332,12 @@ TOOLS: list[dict] = [
                     "enum": ["top", "bottom"],
                     "default": "top",
                 },
+                "face_indices": {
+                    "type": "array", "minItems": 1, "maxItems": 100,
+                    "uniqueItems": True,
+                    "items": {"type": "integer", "minimum": 0},
+                },
+                "occurrence_path": {"type": "string"},
             },
         },
     },
@@ -237,6 +355,12 @@ TOOLS: list[dict] = [
                 },
                 "body_name": {"type": "string"},
                 "body_index": {"type": "integer", "default": 0},
+                "occurrence_path": {
+                    "type": "string",
+                    "description": (
+                        "Full occurrence path for disambiguating nested bodies"
+                    ),
+                },
             },
         },
     },
@@ -359,6 +483,8 @@ TOOLS: list[dict] = [
                     "description": "Name of the sketch containing the sweep path",
                 },
                 "path_curve_index": {"type": "integer", "default": 0, "minimum": 0},
+                "profile_sketch_name": {"type": "string"},
+                "component_name": {"type": "string"},
                 "operation": {
                     "type": "string",
                     "enum": ["new_body", "join", "cut", "intersect"],
@@ -384,6 +510,7 @@ TOOLS: list[dict] = [
                         "first profile will be lofted"
                     ),
                 },
+                "component_name": {"type": "string"},
                 "operation": {
                     "type": "string",
                     "enum": ["new_body", "join", "cut", "intersect"],
@@ -395,7 +522,10 @@ TOOLS: list[dict] = [
     {
         "name": "create_polygon",
         "title": "Create Polygon",
-        "description": "Draw a regular polygon in the most recent sketch",
+        "description": (
+            "Draw a regular polygon in sketch-local coordinates; optionally "
+            "select sketch_name and component_name."
+        ),
         "inputSchema": {
             "type": "object",
             "required": ["sides", "radius"],
@@ -409,6 +539,8 @@ TOOLS: list[dict] = [
                 "center_x": {"type": "number", "default": 0},
                 "center_y": {"type": "number", "default": 0},
                 "center_z": {"type": "number", "default": 0},
+                "sketch_name": {"type": "string"},
+                "component_name": {"type": "string"},
             },
         },
     },
@@ -416,7 +548,8 @@ TOOLS: list[dict] = [
         "name": "draw_arc",
         "title": "Draw Arc",
         "description": (
-            "Draw an arc in the most recent sketch (center + start point + sweep angle)"
+            "Draw an arc in sketch-local coordinates (center + start point + "
+            "sweep angle); optionally select sketch_name and component_name."
         ),
         "inputSchema": {
             "type": "object",
@@ -434,6 +567,8 @@ TOOLS: list[dict] = [
                     "minimum": -360,
                     "maximum": 360,
                 },
+                "sketch_name": {"type": "string"},
+                "component_name": {"type": "string"},
             },
         },
     },
@@ -577,7 +712,14 @@ TOOLS: list[dict] = [
     {
         "name": "export_step",
         "title": "Export STEP",
-        "description": "Export a body or component as a STEP file",
+        "description": (
+            "Export one named body, including a body in a component, as STEP. "
+            "Uses an isolated temporary design and restores the source document. "
+            "Returns success only for a nonempty output file. Existing paths "
+            "are rejected rather than overwritten. Explicit home-relative paths "
+            "are expanded; relative paths resolve in Fusion's working directory. "
+            "Paths refer to the Fusion host, not the MCP client. " + DIRECT_TOOL_CALLS
+        ),
         "inputSchema": {
             "type": "object",
             "required": ["body_name"],
@@ -852,6 +994,7 @@ TOOLS: list[dict] = [
                     "type": "string",
                     "description": "Sketch name (default: most recent)",
                 },
+                "component_name": {"type": "string"},
             },
         },
     },
@@ -861,6 +1004,10 @@ TOOLS: list[dict] = [
         "description": (
             "Automatically add geometric constraints and dimensions to fully "
             "constrain a sketch (Fusion 2026+ AutoConstrain API). "
+            "License-gated: requires an Autodesk account entitled to AutoConstrain. "
+            "Restricted accounts may be denied even when this API is installed; "
+            "eligible licensed users can use this tool. Exact subscription tier "
+            "requirements are not established by this audit. "
             "result_option: 1 = thorough/slow (default), 2 = fast, "
             "3 = may move geometry within tolerance."
         ),
@@ -1090,6 +1237,8 @@ TOOLS: list[dict] = [
         "title": "Draw Spline",
         "description": (
             "Draw a spline in the most recent sketch. "
+            "Optionally select sketch_name and component_name; points are in "
+            "the selected sketch's local coordinates. "
             "Use fit_points for a curve through points, or "
             "control_points for a control-polygon spline."
         ),
@@ -1118,6 +1267,8 @@ TOOLS: list[dict] = [
                     "default": 3,
                     "description": ("Spline degree (only for control_points, 3 or 5)"),
                 },
+                "sketch_name": {"type": "string"},
+                "component_name": {"type": "string"},
             },
         },
     },
@@ -1157,6 +1308,7 @@ TOOLS: list[dict] = [
                     "type": "string",
                     "description": ("Sketch name (default: most recent)"),
                 },
+                "component_name": {"type": "string"},
             },
         },
     },
@@ -1185,6 +1337,7 @@ TOOLS: list[dict] = [
                     "description": ("Y near the segment to remove"),
                 },
                 "sketch_name": {"type": "string"},
+                "component_name": {"type": "string"},
             },
         },
     },
@@ -1213,6 +1366,7 @@ TOOLS: list[dict] = [
                     "description": "Y near the end to extend",
                 },
                 "sketch_name": {"type": "string"},
+                "component_name": {"type": "string"},
             },
         },
     },
@@ -1397,7 +1551,13 @@ TOOLS: list[dict] = [
     {
         "name": "scale_body",
         "title": "Scale Body",
-        "description": "Scale a body uniformly or non-uniformly",
+        "description": (
+            "Scale a uniquely named solid body in a parametric design. "
+            "Anchor coordinates are world-space centimeters; nonuniform factors "
+            "follow the owning component's X/Y/Z axes and require all three values. "
+            "Creates a retained hidden ScaleAnchor sketch for the reference point. "
+            "Direct-history designs are unsupported and rejected before mutation."
+        ),
         "inputSchema": {
             "type": "object",
             "required": ["body_name", "scale"],
@@ -1858,6 +2018,7 @@ TOOLS: list[dict] = [
                     "type": "string",
                     "description": ("Target sketch (default: most recent)"),
                 },
+                "component_name": {"type": "string"},
             },
         },
     },
@@ -2379,7 +2540,10 @@ TOOLS: list[dict] = [
             "the model. Pass a canonical view (iso/front/top/etc.) to "
             "reposition the camera first, or 'current' to keep it as is. "
             "Returns base64-encoded image bytes alongside metadata; the MCP "
-            "server delivers it as an image content block."
+            "server delivers it as an image content block. "
+            + DIRECT_TOOL_CALLS
+            + " "
+            + TEXT_VISIBILITY_REVIEW
         ),
         "inputSchema": {
             "type": "object",
@@ -2427,7 +2591,230 @@ TOOLS: list[dict] = [
 # Applied after definition for cleanliness. Classifies each tool by its
 # side-effect profile so MCP clients can auto-approve safe operations.
 
+TOOLS.extend(
+    [
+        {
+            "name": "draw_sketch_text",
+            "title": "Sketch Text",
+            "description": (
+                "Place literal Arial text in a uniquely named sketch. Optional "
+                "component_name selects its unique owner; default root. Coordinates "
+                "and rectangle dimensions are sketch-local centimeters; rectangles "
+                "can wrap text. " + DIRECT_TOOL_CALLS + " " + TEXT_VISIBILITY_REVIEW
+            ),
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "sketch_name",
+                    "text",
+                    "x",
+                    "y",
+                    "height",
+                    "width",
+                    "box_height",
+                ],
+                "properties": {
+                    "sketch_name": {"type": "string"},
+                    "component_name": {"type": "string"},
+                    "text": {"type": "string", "minLength": 1, "maxLength": 100},
+                    "x": {"type": "number"},
+                    "y": {"type": "number"},
+                    "height": {"type": "number", "minimum": 0.03, "maximum": 2},
+                    "width": {"type": "number", "exclusiveMinimum": 0},
+                    "box_height": {"type": "number", "exclusiveMinimum": 0},
+                },
+            },
+        },
+        {
+            "name": "extrude_sketch_entities",
+            "title": "Extrude Sketch Entities",
+            "description": (
+                "Extrude all texts or profiles in one uniquely named sketch in its "
+                "owning component. Optional component_name selects the owner; "
+                "default root. Signed distance is centimeters along sketch normal. "
+                "Supports cut, join and new_body; hides the sketch after creation. "
+                + DIRECT_TOOL_CALLS
+                + " "
+                + TEXT_VISIBILITY_REVIEW
+            ),
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "sketch_name",
+                    "entity_type",
+                    "distance",
+                    "operation",
+                    "feature_name",
+                ],
+                "properties": {
+                    "sketch_name": {"type": "string"},
+                    "component_name": {"type": "string"},
+                    "entity_type": {"enum": ["texts", "profiles"]},
+                    "distance": {"type": "number", "minimum": -10, "maximum": 10},
+                    "operation": {"enum": ["cut", "join", "new_body"]},
+                    "feature_name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100,
+                    },
+                },
+            },
+        },
+        {
+            "name": "get_body_topology",
+            "title": "Body Edge Topology",
+            "description": (
+                "Read paginated body edges or faces. Edge rows include bounds and "
+                "adjacent face indices; face rows include bounds, area and "
+                "surface type. "
+                "Body names must be unique; occurrence_path selects an instance "
+                "by full path, or 'root' for root bodies. "
+                "Indices describe current geometry only; re-query after edits. "
+                + DIRECT_TOOL_CALLS
+            ),
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["body_name"],
+                "properties": {
+                    "body_name": {"type": "string"},
+                    "entity_type": {"enum": ["edges", "faces"], "default": "edges"},
+                    "offset": {"type": "integer", "minimum": 0},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 200},
+                    "occurrence_path": {"type": "string"},
+                },
+            },
+        },
+        {
+            "name": "chamfer_edges",
+            "title": "Chamfer Selected Edges",
+            "description": (
+                "Chamfer explicit current solid-body edge indices with adjacent "
+                "reference_face_indices and two positive distances in centimeters. "
+                "Use get_body_topology immediately before selection. Runs in the "
+                "uniquely selected body (optional occurrence_path, or 'root'); "
+                "body owner's frame, without tangent-chain propagation or fixed "
+                "world orientation. First distance uses the supplied adjacent face "
+                "as the chamfer reference side. "
+                + DIRECT_TOOL_CALLS
+                + " "
+                + TEXT_VISIBILITY_REVIEW
+            ),
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "body_name",
+                    "edge_indices",
+                    "reference_face_indices",
+                    "distance_one",
+                    "distance_two",
+                    "feature_name",
+                ],
+                "properties": {
+                    "body_name": {"type": "string"},
+                    "edge_indices": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 200,
+                        "uniqueItems": True,
+                        "items": {"type": "integer", "minimum": 0},
+                    },
+                    "reference_face_indices": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 200,
+                        "items": {"type": "integer", "minimum": 0},
+                    },
+                    "distance_one": {"type": "number", "exclusiveMinimum": 0},
+                    "occurrence_path": {"type": "string"},
+                    "distance_two": {"type": "number", "exclusiveMinimum": 0},
+                    "feature_name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100,
+                    },
+                },
+            },
+        },
+        {
+            "name": "save_design",
+            "title": "Save Design",
+            "description": (
+                "Save the inspected active document_id. First save requires name "
+                "and exactly one accessible project_id or unique project_name; uses "
+                "its root folder, rejecting duplicate names. Existing document: "
+                "omit name/project to save a version in place. Accepted save with "
+                "pending metadata requires state inspection, never blind retry. "
+                + DIRECT_TOOL_CALLS
+            ),
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["document_id"],
+                "properties": {
+                    "document_id": {"type": "string", "minLength": 1},
+                    "name": {"type": "string", "maxLength": 100},
+                    "project_id": {"type": "string"},
+                    "project_name": {"type": "string"},
+                    "description": {"type": "string", "maxLength": 1000},
+                },
+            },
+        },
+        {
+            "name": "create_design",
+            "title": "New Fusion Design",
+            "description": (
+                "Create and activate a separate empty unsaved Fusion design with "
+                "an explicit name. No cloud project is required; does not "
+                "save, close, or clear existing documents. " + DIRECT_TOOL_CALLS
+            ),
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["name"],
+                "properties": {
+                    "name": {"type": "string", "minLength": 1, "maxLength": 100},
+                },
+            },
+        },
+        {
+            "name": "get_feature_health",
+            "title": "Feature Health",
+            "description": (
+                "Read paginated feature types, health and diagnostics for a component"
+            ),
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "component_name": {"type": "string"},
+                    "offset": {"type": "integer", "minimum": 0},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 200},
+                },
+            },
+        },
+        {
+            "name": "get_document_state",
+            "title": "Document State",
+            "description": (
+                "Read active document identity, saved state and cloud project"
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+        },
+    ]
+)
+
 _READ_ONLY = {
+    "get_body_topology",
+    "get_feature_health",
+    "get_document_state",
     "get_scene_info",
     "get_object_info",
     "get_bounding_box",
@@ -2445,8 +2832,16 @@ _READ_ONLY = {
     "get_design_type",
     "render_view",
 }
-_DESTRUCTIVE = {"delete_all", "delete_parameter"}
+_DESTRUCTIVE = {
+    "delete_all",
+    "delete_parameter",
+    "chamfer_edges",
+    "extrude_sketch_entities",
+}
 _IDEMPOTENT = {
+    "get_body_topology",
+    "get_feature_health",
+    "get_document_state",
     "ping",
     "get_scene_info",
     "get_object_info",
