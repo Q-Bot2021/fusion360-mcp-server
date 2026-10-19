@@ -1,5 +1,6 @@
 """Explicit read-only acceptance against active CAD or drawing fixtures."""
 
+import hashlib
 import json
 import os
 import sys
@@ -12,6 +13,59 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 pytestmark = pytest.mark.fusion_e2e
+
+
+def test_document_save_quota_live():
+    async def check():
+        params = StdioServerParameters(
+            command=sys.executable, args=["-m", "tests.development_mcp"]
+        )
+        async with stdio_client(params) as streams:
+            async with ClientSession(*streams) as session:
+                await session.initialize()
+                reload_result = await session.call_tool("dev_reload_candidates", {})
+                assert not reload_result.isError, reload_result.content
+                before = await session.call_tool("get_document_state", {})
+                assert not before.isError, before.content
+                identity = before.structuredContent["document_id"]
+                result = await session.call_tool("diagnose_document_save", {
+                    "document_id": identity,
+                })
+                assert not result.isError, result.content
+                payload = result.structuredContent
+                assert payload["save_retried"] is False
+                assert payload["save_failure_cause_confirmed"] is False
+                if payload["quota_applies"]:
+                    expected = max(0, 1 - payload["available_slots"])
+                    assert payload["documents_to_make_read_only"] == expected
+                    if expected:
+                        assert payload["status"] == "EDITABLE_DOCUMENT_LIMIT_REACHED"
+                        assert payload["instructions"]
+                    else:
+                        assert payload["status"] == "SLOTS_AVAILABLE"
+                        assert payload["instructions"] == []
+                after = await session.call_tool("get_document_state", {})
+                assert not after.isError, after.content
+                assert after.structuredContent["document_id"] == identity
+                root = Path(__file__).resolve().parents[1]
+                sources = (
+                    "addon/server/mechanical_queries.py",
+                    "addon/server/command_handler.py",
+                    "tests/development_mcp.py",
+                    "tests/test_mechanical_live.py",
+                )
+                report = {
+                    "result": payload,
+                    "source_sha256": {
+                        name: hashlib.sha256((root / name).read_bytes()).hexdigest()
+                        for name in sources
+                    },
+                    "loaded_source_sha256": reload_result.structuredContent,
+                }
+                path = root / ".pytest_cache/document-save-quota-live.json"
+                path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+    anyio.run(check)
 
 
 @pytest.mark.parametrize(

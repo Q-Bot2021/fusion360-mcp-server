@@ -177,6 +177,116 @@ and save acceptance tests passed (two cases). Reports are under
 `.pytest_cache/generic-save-production-*`, with JUnit results at
 `.pytest_cache/generic-production-live.xml`.
 
+## Door Assembly Prototype
+
+### Inserted Hinge Sources
+
+Production saved-design opening and insertion now work after deploying and
+restarting the installed add-in. The original assembly has not yet been cleared
+or replaced. The separate reusable sources below are saved in `MCP_Dev`.
+
+| Saved Source | State |
+| --- | --- |
+| `DoorHinge_FixedLeaf_20261018` | One connected leaf with three joined knuckles, three 4.4 mm mounting holes and opposing-knuckle clearance notches |
+| `DoorHinge_MovingLeaf_20261018` | One connected leaf with two joined knuckles, three 4.4 mm mounting holes, and opposing-knuckle clearance notches |
+| `DoorHinge_Pin_20261018` | Separate 4 mm headed pin, one solid |
+| `DoorHinge_Subassembly_20261018` | Three referenced inserted components; pin rigidly attached to fixed half, moving half on a Z revolute |
+| `DoorFrame_Source_20261018` | Single joined frame, two 2.5 mm mortises and six aligned pilot holes |
+| `DoorPanel_Source_20261018` | Single door panel, two matching 2.5 mm mortises and six aligned pilot holes |
+
+Both leaves are 2.5 mm thick. The read-only
+`test_active_hinge_source_mounting_holes_live` verifies a saved source's single
+body, three cylindrical through-holes at z=2/5/8 cm, their 4.4 mm diameter and
+2.5 mm depth, and expected pin-bore count. Both sources passed live.
+The frame and door mounting test asserts pocket-floor bounds and six 3 mm pilot
+holes at z=17/20/23 and 187/190/193 cm, with 22.5 mm material depth beneath the
+recess. JUnit evidence: `.pytest_cache/fixed-hinge-holes.xml`,
+`.pytest_cache/hinge-source-mounting-holes.xml`,
+`.pytest_cache/frame-source-mounting.xml`, `.pytest_cache/door-source-mounting.xml`.
+
+The inserted hinge subassembly passed actual-transform rotation, fixed-part
+invariance, zero cross-component interference at seven 15-degree samples from
+0 to -90 degrees, and restoration within 1e-9. This is sampled clearance, not
+proof of continuous swept clearance. Evidence: `.pytest_cache/inserted-hinge-motion.xml`.
+Mounting holes are not fasteners; native library screws remain pending.
+
+Repeated hinge instances require explicit occurrence targeting for their mounts.
+The as-built joint helper now accepts full occurrence paths in its existing
+component selectors and rejects ambiguous names, missing targets and self-joints.
+All motion-type mappings pass unit coverage; development live acceptance verifies
+an exact nested rigid joint without moving either occurrence and no mutation for
+ambiguous input. Evidence: `.pytest_cache/nested-joint-path-selection.xml`.
+Production deployment/restart and acceptance of this latest selector change are
+pending before mounting repeated hinges in the original top-level assembly.
+The corrected production handler and manifest are staged with hash verification;
+previous copies are preserved in `.pytest_cache/production-joint-backup-20261019_005534`.
+Receipt: `.pytest_cache/production-joint-stage-20261019_005534.json`.
+A Stop/Run of Fusion360MCP is still needed to load the selector correction.
+
+### Save Quota Diagnostic
+
+Pending production promotion: `diagnose_document_save`. Unit and MCP protocol
+checks and read-only live verification pass for available capacity and a reached
+quota. Keep the candidate development-only until promotion is reviewed. This is
+a promotion backlog entry, not production registration.
+
+The read-only development candidate `diagnose_document_save` accepts the inspected
+active `document_id` and `required_slots` (default 1). It uses
+`Data.personalUseLimits.editableFileCount` and `maxEditableFileCount`, not a scan
+of read-only files or a hard-coded license limit. It reports available slots and
+the number of documents the user must manually change to Read-Only in Fusion's
+Data Panel. It never changes file status, saves, or retries a save.
+
+Current quota evidence cannot prove the cause of a previous failed save. A pending
+cloud upload is not classified as a quota failure; an existing editable document
+may require no new slot. Non-personal licenses return `NOT_PERSONAL_USE` rather
+than a fabricated quota. Available capacity was observed earlier; the latest
+live query reports 10 of 10 editable files and instructions to free one slot.
+No automatic editability changes or save retries occurred. Evidence:
+`.pytest_cache/document-save-quota-live.json`.
+
+`MCP_DoorAssembly_20261018` is saved in `MCP_Dev`. It contains a 106 x 12 x
+220 cm frame, an 85 x 6 x 200 cm door, two 0.8 cm-deep flush mortises, and two
+five-knuckle hinges with 4 mm pins. A named Frame-Door revolute joint with an
+explicit Z-axis direction was verified by capturing 0, 45 and 90 degree opening
+frames and confirming restoration to the closed transform. Development live
+creation evidence: `.pytest_cache/door-joint-animation-20261018_193931_885748/report.json`;
+corrected assembly animation evidence: `.pytest_cache/door-joint-animation-20261018_211429_736073/report.json`.
+The original rigid as-built relation is suppressed, leaving one active revolute.
+
+All four leaf mortises now coincide with their hinge leaves at z=15-25 and
+185-195 cm. The live occurrence-aware interference check reports zero Frame-Door collisions.
+The unfiltered full-component check reports only the two intentional jamb/head
+corner overlaps, each 1,200 cm3. Evidence: `.pytest_cache/door-interference-20261018_211343_444974/report.json`.
+
+The native Fusion fastener-library insertion step remains pending. The available
+MCP/API surface exposes fastener sizing metadata and inspection of existing
+fastener occurrences, but no supported library-fastener insertion operation;
+no substitute screws are represented as library hardware. Production live
+acceptance of the corrected as-built joint and extrusion handlers is also pending
+an installed production add-in restart.
+
+The inserted-component rebuild is not complete: the saved assembly still contains
+the earlier locally authored component bodies. The original assembly file was
+not cleared or replaced during these disposable acceptance tests.
+
+The `open_design`, `insert_design`, and `list_occurrences` routes are now available
+in the production source. The development MCP now passes root-level referenced
+insertion, body/path/reference readback, save and reopen using real cloud file
+identities. Evidence: `.pytest_cache/inserted-component-20261018_234449_695346/report.json`.
+
+Nested insertion exposed an installed-API restriction: grounding is unavailable
+for subcomponent occurrences. The helper now rejects nested grounding before
+mutation, resolves one unambiguous parent occurrence, and returns an assembly-
+context proxy instead of a native local path. Nested occurrence inventory reports
+`is_grounded: null` and `grounding_supported: false`. Live acceptance verified a
+new referenced nested occurrence, its distinct full path and an exact +1 count
+delta in the existing disposable fixture without allocating more cloud files.
+Evidence: `.pytest_cache/nested-context-20261018_235009_521712/report.json`.
+Repeated parent instances are rejected rather than guessed. Production live
+acceptance of the updated helper remains pending; these tests are not evidence
+that the door itself has been rebuilt as inserted hinge subassemblies.
+
 Production renders after extrusion and chamfering were visually reviewed for
 both root XY and component YZ sketches: labels are single-line and readable,
 without clipping, overlap or missing glyphs. Placement-only outward views were

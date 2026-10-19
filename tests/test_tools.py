@@ -168,6 +168,9 @@ def test_expected_tools_present():
         "create_box_parametric",
         # assembly (extended)
         "create_as_built_joint",
+        "open_design",
+        "insert_design",
+        "list_occurrences",
         "create_rigid_group",
         # inspection / analysis
         "measure_distance",
@@ -215,6 +218,28 @@ def test_expected_tools_present():
     assert not missing, f"Missing tools: {missing}"
     extra = names - expected
     assert not extra, f"Unexpected tools: {extra}"
+
+
+def test_as_built_joint_schema_exposes_explicit_motion_directions():
+    properties = get_tool_by_name("create_as_built_joint")["inputSchema"][
+        "properties"
+    ]
+    assert properties["joint_name"]["maxLength"] == 100
+    for field in (
+        "rotation_axis",
+        "slide_direction",
+        "normal_direction",
+        "pitch_direction",
+        "yaw_direction",
+    ):
+        assert properties[field]["enum"] == ["x", "y", "z"]
+
+
+def test_interference_schema_has_explicit_occurrence_scope():
+    properties = get_tool_by_name("check_interference")["inputSchema"][
+        "properties"
+    ]
+    assert properties["cross_occurrence_only"]["default"] is False
 
 
 def test_all_tools_have_annotations():

@@ -107,6 +107,334 @@ def test_create_design_has_no_project_or_fixture_name_dependency(queries, app):
     assert result["document_name"] == "Bracket"
 
 
+@pytest.mark.parametrize("count,slots,needed", [(10, 1, 1), (9, 3, 2), (8, 2, 0)])
+def test_save_quota_diagnostic_measures_slots_without_saving(
+    queries, app, count, slots, needed
+):
+    app.data.personalUseLimits = SimpleNamespace(
+        isValid=True, editableFileCount=count, maxEditableFileCount=10
+    )
+    app.activeDocument.save = Mock()
+    app.activeDocument.saveAs = Mock()
+    result = queries.diagnose_document_save(
+        SimpleNamespace(app=app), "doc-id", required_slots=slots
+    )
+    assert result["documents_to_make_read_only"] == needed
+    assert result["available_slots"] == 10 - count
+    expected_status = (
+        "EDITABLE_DOCUMENT_LIMIT_REACHED" if count >= 10
+        else "INSUFFICIENT_EDITABLE_DOCUMENT_SLOTS" if needed else "SLOTS_AVAILABLE"
+    )
+    assert result["status"] == expected_status
+    assert result["save_failure_cause_confirmed"] is False
+    assert bool(result["instructions"]) == bool(needed)
+    app.activeDocument.save.assert_not_called()
+    app.activeDocument.saveAs.assert_not_called()
+
+
+def test_save_quota_diagnostic_other_license(queries, app):
+    app.data.personalUseLimits = None
+    result = queries.diagnose_document_save(SimpleNamespace(app=app), "doc-id")
+    assert result["quota_applies"] is False
+    assert result["status"] == "NOT_PERSONAL_USE"
+
+
+@pytest.mark.parametrize("count,maximum", [(-1, 10), (0, 0), (True, 10)])
+def test_save_quota_diagnostic_rejects_invalid_counts(queries, app, count, maximum):
+    app.data.personalUseLimits = SimpleNamespace(
+        isValid=True, editableFileCount=count, maxEditableFileCount=maximum
+    )
+    with pytest.raises(RuntimeError, match="invalid editable-document quota"):
+        queries.diagnose_document_save(SimpleNamespace(app=app), "doc-id")
+
+
+def test_save_quota_diagnostic_rejects_unavailable_quota(queries, app):
+    app.data.personalUseLimits = SimpleNamespace(isValid=False)
+    with pytest.raises(RuntimeError, match="quota information is invalid"):
+        queries.diagnose_document_save(SimpleNamespace(app=app), "doc-id")
+
+
+@pytest.mark.parametrize("slots", [0, 101, True, 1.5])
+def test_save_quota_diagnostic_rejects_invalid_slots(queries, app, slots):
+    with pytest.raises(ValueError, match="required_slots"):
+        queries.diagnose_document_save(SimpleNamespace(app=app), "doc-id", slots)
+
+
+def test_save_quota_diagnostic_rejects_stale_identity(queries, app):
+    with pytest.raises(ValueError, match="identity"):
+        queries.diagnose_document_save(SimpleNamespace(app=app), "stale")
+
+
+def test_open_design_refuses_to_switch_from_unsaved_document(queries, app):
+    app.data.findFileById = Mock()
+    with pytest.raises(ValueError, match="Save the active document"):
+        queries.open_design(app, "saved-design-id")
+    app.data.findFileById.assert_not_called()
+    app.documents.open.assert_not_called()
+
+
+def test_open_design_activates_and_verifies_saved_file(queries, app):
+    project = SimpleNamespace(name="MCP_Dev", id="project-id")
+    source = SimpleNamespace(id="source-id")
+    data_file = SimpleNamespace(
+        id="target-id",
+        fileExtension="f3d",
+        isComplete=True,
+        parentProject=project,
+    )
+    active = SimpleNamespace(
+        isValid=True,
+        isSaved=True,
+        dataFile=source,
+    )
+    opened = SimpleNamespace(
+        isValid=True,
+        isSaved=True,
+        creationId="target-document-id",
+        name="DoorPart",
+        dataFile=data_file,
+    )
+    app.activeDocument = active
+    app.data = SimpleNamespace(findFileById=Mock(return_value=data_file))
+
+    def open_file(file):
+        assert file is data_file
+        app.activeDocument = opened
+        return opened
+
+    app.documents.open = Mock(side_effect=open_file)
+
+    result = queries.open_design(app, "target-id")
+
+    assert result["document_id"] == "target-document-id"
+    assert result["document_name"] == "DoorPart"
+    assert result["data_file_id"] == "target-id"
+    assert result["project_name"] == "MCP_Dev"
+    assert "development_only" not in result
+    app.documents.open.assert_called_once_with(data_file)
+
+
+@pytest.mark.parametrize(
+    "file_extension,is_complete",
+    [("f2d", True), ("f3d", False)],
+)
+def test_open_design_rejects_unsupported_saved_file(
+    queries, app, file_extension, is_complete
+):
+    app.activeDocument = SimpleNamespace(
+        isValid=True,
+        isSaved=True,
+        dataFile=SimpleNamespace(id="source-id"),
+    )
+    app.data = SimpleNamespace(
+        findFileById=Mock(return_value=SimpleNamespace(
+            id="target-id",
+            fileExtension=file_extension,
+            isComplete=is_complete,
+        ))
+    )
+    with pytest.raises(ValueError, match="complete saved Fusion design"):
+        queries.open_design(app, "target-id")
+    app.documents.open.assert_not_called()
+
+
+def test_document_state_preserves_file_id_when_project_metadata_is_pending(queries):
+    class DataFile:
+        id = "saved-file-id"
+        isComplete = True
+
+        @property
+        def parentProject(self):
+            raise RuntimeError("InternalValidationError : res")
+
+    document = SimpleNamespace(
+        isValid=True,
+        isSaved=True,
+        creationId="saved-document-id",
+        name="SavedPart",
+        dataFile=DataFile(),
+    )
+    app = SimpleNamespace(activeDocument=document)
+
+    state = queries.document_state(app)
+
+    assert state["document_id"] == "saved-document-id"
+    assert state["is_saved"] is True
+    assert state["data_file_id"] is None
+    assert state["project_name"] is None
+    assert state["metadata_pending"] is True
+
+
+def test_document_state_returns_cloud_identity_only_for_complete_file(queries):
+    project = SimpleNamespace(name="MCP_Dev")
+    data_file = SimpleNamespace(
+        id="urn:adsk.wipprod:dm.lineage:part-id",
+        isComplete=True,
+        parentProject=project,
+    )
+    app = SimpleNamespace(
+        activeDocument=SimpleNamespace(
+            isValid=True,
+            isSaved=True,
+            creationId="saved-document-id",
+            name="SavedPart",
+            dataFile=data_file,
+        )
+    )
+
+    state = queries.document_state(app)
+
+    assert state["data_file_id"] == data_file.id
+    assert state["project_name"] == "MCP_Dev"
+    assert state["metadata_pending"] is False
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_insert_design_returns_referenced_occurrence_metadata(queries, app, nested):
+    project = SimpleNamespace(id="project-id", name="MCP_Dev")
+    active_file = SimpleNamespace(id="assembly-file", parentProject=project)
+    part_file = SimpleNamespace(
+        id="part-file",
+        name="FramePart",
+        fileExtension="f3d",
+        versionNumber=3,
+        parentProject=project,
+    )
+    app.activeDocument = SimpleNamespace(
+        isValid=True,
+        isSaved=True,
+        dataFile=active_file,
+    )
+    app.data = SimpleNamespace(findFileById=Mock(return_value=part_file))
+    transform = SimpleNamespace(
+        asArray=lambda: [1, 0, 0, 2, 0, 1, 0, 3, 0, 0, 1, 4, 0, 0, 0, 1]
+    )
+    occurrence = SimpleNamespace(
+        component=SimpleNamespace(name="FramePart", isLibraryItem=False),
+        definition=SimpleNamespace(objectType="adsk::fusion::Component"),
+        fullPathName="FramePart:1",
+        name="FramePart:1",
+        isGrounded=False,
+        isReferencedComponent=True,
+        isLightBulbOn=True,
+        bRepBodies=SimpleNamespace(count=1),
+        childOccurrences=SimpleNamespace(count=0),
+        transform2=transform,
+    )
+    root = SimpleNamespace(
+        name="Root",
+        occurrences=SimpleNamespace(addByInsert=Mock(return_value=occurrence)),
+    )
+    parent = root
+    if nested:
+        class NestedOccurrence(SimpleNamespace):
+            @property
+            def isGrounded(self):
+                raise RuntimeError("Nested grounding unavailable")
+
+            @isGrounded.setter
+            def isGrounded(self, value):
+                raise RuntimeError("Nested grounding unavailable")
+
+        attributes = vars(occurrence).copy()
+        attributes.pop("isGrounded")
+        attributes["fullPathName"] = "Hinge:1+FramePart:1"
+        occurrence = NestedOccurrence(**attributes)
+        parent = SimpleNamespace(
+            name="Hinge",
+            occurrences=SimpleNamespace(addByInsert=Mock(return_value=occurrence)),
+        )
+        parent_occurrence = SimpleNamespace(component=parent, fullPathName="Hinge:1")
+        root.allOccurrences = [parent_occurrence]
+        occurrence.createForAssemblyContext = Mock(return_value=occurrence)
+    handler = SimpleNamespace(
+        app=app, _root=lambda: root,
+        _design=lambda: SimpleNamespace(allComponents=Collection([root, parent])),
+    )
+    matrix = SimpleNamespace()
+    core = SimpleNamespace(
+        Matrix3D=SimpleNamespace(create=Mock(return_value=matrix)),
+        Vector3D=SimpleNamespace(create=lambda *values: values),
+    )
+
+    result = queries.insert_design(
+        handler,
+        "part-file",
+        translation=[2, 3, 4],
+        referenced=True,
+        parent_component_name="Hinge" if nested else "",
+        module_loader=lambda name: core,
+    )
+
+    parent.occurrences.addByInsert.assert_called_once_with(part_file, matrix, True)
+    assert result["is_referenced"] is True
+    assert result["path"] == ("Hinge:1+FramePart:1" if nested else "FramePart:1")
+    assert result["body_count"] == 1
+    assert result["transform"]["translation"] == [2, 3, 4]
+    assert result["data_file_id"] == "part-file"
+    if nested:
+        with pytest.raises(ValueError, match="root-level"):
+            queries.insert_design(
+                handler, "part-file", parent_component_name="Hinge", grounded=True
+            )
+        parent.occurrences.addByInsert.assert_called_once()
+
+
+def test_insert_design_referenced_requires_same_project_before_mutation(
+    queries, app
+):
+    active_project = SimpleNamespace(id="project-one")
+    other_project = SimpleNamespace(id="project-two")
+    active_file = SimpleNamespace(id="active-file", parentProject=active_project)
+    part_file = SimpleNamespace(
+        id="part-file",
+        fileExtension="f3d",
+        parentProject=other_project,
+    )
+    app.activeDocument = SimpleNamespace(
+        isValid=True, isSaved=True, dataFile=active_file
+    )
+    app.data = SimpleNamespace(findFileById=Mock(return_value=part_file))
+    handler = SimpleNamespace(app=app)
+    handler._root = Mock()
+
+    with pytest.raises(ValueError, match="same project"):
+        queries.insert_design(handler, "part-file", referenced=True)
+
+    handler._root.assert_not_called()
+
+
+def test_list_occurrences_reports_reference_and_library_flags(queries):
+    component = SimpleNamespace(name="HingePart", isLibraryItem=True)
+    occurrence = SimpleNamespace(
+        component=component,
+        definition=SimpleNamespace(objectType="adsk::fusion::Component"),
+        fullPathName="UpperHinge:1+HingePart:1",
+        name="HingePart:1",
+        isGrounded=False,
+        isReferencedComponent=True,
+        isLightBulbOn=True,
+        bRepBodies=Collection([object()]),
+        childOccurrences=Collection([]),
+        transform2=SimpleNamespace(
+            asArray=lambda: [1, 0, 0, 2, 0, 1, 0, 3, 0, 0, 1, 4, 0, 0, 0, 1]
+        ),
+    )
+    root = SimpleNamespace(allOccurrences=[occurrence])
+    handler = SimpleNamespace(_root=lambda: root)
+
+    result = queries.list_occurrences(handler)
+
+    assert result["total"] == 1
+    assert result["occurrences"][0]["path"] == "UpperHinge:1+HingePart:1"
+    assert result["occurrences"][0]["is_referenced"] is True
+    assert result["occurrences"][0]["is_library_item"] is True
+    assert result["occurrences"][0]["body_count"] == 1
+    assert result["occurrences"][0]["transform"]["translation"] == [2, 3, 4]
+    assert result["occurrences"][0]["is_grounded"] is None
+    assert result["occurrences"][0]["grounding_supported"] is False
+
+
 @pytest.mark.parametrize("component_name", ["", "Part"])
 def test_sketch_text_uses_literal_text_api(queries, component_name):
     text_input = Mock()
@@ -186,11 +514,22 @@ def test_extrude_text_preserves_text_entities(
         _design=lambda: SimpleNamespace(allComponents=Collection([root])),
     )
     selected = []
+    extent = object()
     core = SimpleNamespace(
         ObjectCollection=SimpleNamespace(
             create=lambda: SimpleNamespace(add=selected.append)
         ),
         ValueInput=SimpleNamespace(createByReal=lambda value: value),
+    )
+    directions = SimpleNamespace(
+        PositiveExtentDirection=1,
+        NegativeExtentDirection=2,
+    )
+    fusion = SimpleNamespace(
+        DistanceExtentDefinition=SimpleNamespace(
+            create=Mock(return_value=extent)
+        ),
+        ExtentDirections=directions,
     )
     result = queries.extrude_sketch_entities(
         handler,
@@ -199,15 +538,38 @@ def test_extrude_text_preserves_text_entities(
         distance,
         operation,
         "Text_Engraving",
-        lambda name: core,
+        lambda name: {"adsk.core": core, "adsk.fusion": fusion}[name],
         component_name=component_name,
     )
     assert selected == [text] and result["entity_count"] == 1
-    extrusion.setDistanceExtent.assert_called_once_with(distance < 0, abs(distance))
+    fusion.DistanceExtentDefinition.create.assert_called_once_with(abs(distance))
+    extrusion.setOneSideExtent.assert_called_once_with(
+        extent, directions.NegativeExtentDirection if distance < 0
+        else directions.PositiveExtentDirection
+    )
     extrudes.createInput.assert_called_once_with(
         extrudes.createInput.call_args.args[0], operation
     )
     assert feature.name == "Text_Engraving" and sketch.isVisible is False
+
+
+def test_as_built_joint_info_uses_validity_without_feature_health(queries):
+    occurrence = SimpleNamespace(fullPathName="Frame:1")
+    joint = SimpleNamespace(
+        name="DoorHinge",
+        jointMotion=SimpleNamespace(jointType=0),
+        occurrenceOne=occurrence,
+        occurrenceTwo=occurrence,
+        isSuppressed=False,
+        isValid=True,
+    )
+
+    result = queries.joint_info(SimpleNamespace(name="Root"), "as_built", joint)
+
+    assert result["joint_type"] == "rigid"
+    assert result["is_valid"] is True
+    assert result["health_state"] is None
+    assert result["message"] == ""
 
 
 def test_component_selection_rejects_missing_and_ambiguous_names(queries):
@@ -482,7 +844,7 @@ def test_save_unsaved_fixture_and_inspect_destination(queries, app):
         app.activeDocument.isSaved = True
         app.activeDocument.name = name
         app.activeDocument.dataFile = SimpleNamespace(
-            id="file-id", parentProject=project
+            id="file-id", parentProject=project, isComplete=True
         )
         return True
 
@@ -499,7 +861,9 @@ def test_generic_save_uses_explicit_project_without_fixture_names(queries, app):
         assert name == "Bracket" and folder is project.rootFolder
         app.activeDocument.name = name
         app.activeDocument.isSaved = True
-        app.activeDocument.dataFile = SimpleNamespace(id="file", parentProject=project)
+        app.activeDocument.dataFile = SimpleNamespace(
+            id="file", parentProject=project, isComplete=True
+        )
         return True
 
     app.activeDocument.saveAs = Mock(side_effect=save)
@@ -512,7 +876,7 @@ def test_generic_save_versions_existing_document_in_place(queries, app):
     document = app.activeDocument
     document.isSaved = True
     document.dataFile = SimpleNamespace(
-        id="file", parentProject=queries.sandbox_project(app)
+        id="file", parentProject=queries.sandbox_project(app), isComplete=True
     )
     document.save = Mock(return_value=True)
     result = queries.save_design(app, "doc-id", description="Correction")
@@ -538,6 +902,7 @@ def test_generic_save_rejects_stale_identity_and_missing_project(queries, app):
 def test_generic_save_metadata_pending_never_repeats_save(queries, app):
     class PendingFile:
         id = "pending"
+        isComplete = True
 
         @property
         def parentProject(self):
@@ -578,6 +943,7 @@ def test_generic_save_project_name_must_be_unique_and_exclusive(queries, app):
 def test_save_metadata_pending_does_not_report_failed_mutation(queries, app):
     class PendingFile:
         id = "pending-file"
+        isComplete = True
 
         @property
         def parentProject(self):
@@ -682,7 +1048,9 @@ def test_sandbox_operations_through_mcp(queries, app, monkeypatch):
     def save(name, folder, description, tag):
         app.activeDocument.isSaved = True
         app.activeDocument.name = name
-        app.activeDocument.dataFile = SimpleNamespace(id="saved", parentProject=project)
+        app.activeDocument.dataFile = SimpleNamespace(
+            id="saved", parentProject=project, isComplete=True
+        )
         return True
 
     app.activeDocument.saveAs = save

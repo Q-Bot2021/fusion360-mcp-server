@@ -23,6 +23,7 @@ from fusion360_mcp.tools import (
     get_tool_list,
 )
 from tests.development_mcp import (
+    ASSEMBLY_CANDIDATES,
     DOCUMENT_CANDIDATES,
     STENCIL_CANDIDATES,
     development_list,
@@ -47,6 +48,16 @@ def test_cad_development_discovery_stays_separate():
         "get_drawing_info",
     } | {
         definition["name"] for definition in (*DOCUMENT_CANDIDATES, *STENCIL_CANDIDATES)
+    } | {definition["name"] for definition in ASSEMBLY_CANDIDATES}
+    promoted_assembly_tools = {
+        definition["name"]
+        for definition in ASSEMBLY_CANDIDATES
+        if get_tool_by_name(definition["name"]) is not None
+    }
+    assert promoted_assembly_tools == {
+        "open_design",
+        "insert_design",
+        "list_occurrences",
     }
     assert get_tool_by_name("dev_reload_candidates") is None
     assert development_lookup("execute_code") is None

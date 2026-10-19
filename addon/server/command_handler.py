@@ -29,6 +29,24 @@ from . import parameter_units as _param_units
 
 log = get_logger("handler")
 
+# Assembly candidates dispatch only inside the isolated development add-in
+# runtime package; production discovery and dispatch remain unchanged.
+_DEVELOPMENT_RUNTIME = __name__.startswith("_fusion360_mcp_development_runtime.")
+ASSEMBLY_CANDIDATES = frozenset(
+    {
+        "diagnose_document_save",
+        "open_design",
+        "list_occurrences",
+        "add_occurrence",
+        "insert_design",
+        "set_design_intent",
+        "list_joints",
+        "create_joint",
+        "drive_joint",
+        "animate_joint",
+    }
+)
+
 
 class CommandHandler:
     """Runs Fusion API operations.  Instantiated once; reused across requests."""
@@ -103,6 +121,7 @@ class CommandHandler:
             "flat_pattern",
             "unfold",
             # scene-wide
+            "insert_design",
             "delete_all",
             "undo",
             # parametric & agent-authored changes
@@ -133,6 +152,9 @@ class CommandHandler:
                 "get_feature_health": self.get_feature_health,
                 "get_document_state": self.get_document_state,
                 "create_design": self.create_design,
+                "open_design": self.open_design,
+                "insert_design": self.insert_design,
+                "list_occurrences": self.list_occurrences,
                 "draw_sketch_text": self.draw_sketch_text,
                 "extrude_sketch_entities": self.extrude_sketch_entities,
                 "get_body_topology": self.get_body_topology,
@@ -252,6 +274,12 @@ class CommandHandler:
         params = command.get("params", {})
 
         handler = self._COMMANDS.get(cmd_type)
+        if (
+            handler is None
+            and _DEVELOPMENT_RUNTIME
+            and cmd_type in ASSEMBLY_CANDIDATES
+        ):
+            handler = self._assembly_candidate(cmd_type)
         if handler is None:
             # Infrastructure-level failure (not an application error) —
             # keep the legacy error envelope so the client raises.
@@ -357,6 +385,29 @@ class CommandHandler:
 
     def save_design(self, **params):
         return _mechanical_queries.save_design(self.app, **params)
+
+    def open_design(self, **params):
+        return _mechanical_queries.open_design(self.app, **params)
+
+    def insert_design(self, **params):
+        result = _mechanical_queries.insert_design(self, **params)
+        result.pop("development_only", None)
+        return result
+
+    def list_occurrences(self, **params):
+        result = _mechanical_queries.list_occurrences(self, **params)
+        result.pop("development_only", None)
+        return result
+
+    def _assembly_candidate(self, name):
+        function = getattr(_mechanical_queries, name)
+
+        def run(**params):
+            if "module_loader" in params:
+                raise ValueError("module_loader is not a request parameter")
+            return function(self, **params)
+
+        return run
 
     def _last_sketch(self, component_name: str = None):
         component = (
@@ -1166,6 +1217,12 @@ class CommandHandler:
         sketch_name: str = None,
         component_name: str = None,
     ):
+        if not math.isfinite(height) or height <= 0:
+            raise ValueError("Extrude height must be a positive finite distance")
+        if direction not in {"positive", "negative", "symmetric"}:
+            raise ValueError(
+                "Extrude direction must be positive, negative or symmetric"
+            )
         sketch = (self._sketch_by_name(sketch_name, component_name)
                   if sketch_name else self._last_sketch(component_name))
         owner = self._component_for_sketch(sketch)
@@ -1175,11 +1232,9 @@ class CommandHandler:
 
         ext_feats = owner.features.extrudeFeatures
         ext_input = ext_feats.createInput(profile, self._operation_type(operation))
-        dist = adsk.core.ValueInput.createByReal(height)
-        if direction == "symmetric":
-            ext_input.setSymmetricExtent(dist, True)
-        else:
-            ext_input.setDistanceExtent(direction == "negative", dist)
+        _mechanical_queries.set_extrude_extent(
+            ext_input, adsk.core, adsk.fusion, height, direction
+        )
 
         feat = ext_feats.add(ext_input)
         return {
@@ -1779,6 +1834,13 @@ class CommandHandler:
             item = design.timeline.item(i)
             has_entity = hasattr(item, "entity") and item.entity
             if has_entity and item.entity.name == feature_name:
+                entity = item.entity
+                if hasattr(entity, "isSuppressed"):
+                    entity.isSuppressed = True
+                    if not entity.isSuppressed:
+                        raise RuntimeError(
+                            f"Feature '{feature_name}' did not suppress"
+                        )
                 item.isSuppressed = True
                 return {"suppressed": True, "feature": feature_name}
         raise RuntimeError(f"Feature '{feature_name}' not found in timeline")
@@ -1789,6 +1851,13 @@ class CommandHandler:
             item = design.timeline.item(i)
             has_entity = hasattr(item, "entity") and item.entity
             if has_entity and item.entity.name == feature_name:
+                entity = item.entity
+                if hasattr(entity, "isSuppressed"):
+                    entity.isSuppressed = False
+                    if entity.isSuppressed:
+                        raise RuntimeError(
+                            f"Feature '{feature_name}' did not unsuppress"
+                        )
                 item.isSuppressed = False
                 return {"unsuppressed": True, "feature": feature_name}
         raise RuntimeError(f"Feature '{feature_name}' not found in timeline")
@@ -2845,24 +2914,147 @@ class CommandHandler:
         return {"created": True, "joint_type": joint_type}
 
     def create_as_built_joint(
-        self, component_one: str, component_two: str, joint_type: str = "rigid"
+        self,
+        component_one: str,
+        component_two: str,
+        joint_type: str = "rigid",
+        joint_name: str = None,
+        rotation_axis: str = None,
+        slide_direction: str = None,
+        normal_direction: str = None,
+        pitch_direction: str = None,
+        yaw_direction: str = None,
     ):
+        allowed_directions = {
+            "rigid": set(),
+            "revolute": {"rotation_axis"},
+            "slider": {"slide_direction"},
+            "cylindrical": {"rotation_axis"},
+            "pin_slot": {"rotation_axis", "slide_direction"},
+            "planar": {"normal_direction"},
+            "ball": {"pitch_direction", "yaw_direction"},
+        }
+        if joint_type not in allowed_directions:
+            raise ValueError(f"Unknown joint type: {joint_type}")
+        requested_directions = {
+            "rotation_axis": rotation_axis,
+            "slide_direction": slide_direction,
+            "normal_direction": normal_direction,
+            "pitch_direction": pitch_direction,
+            "yaw_direction": yaw_direction,
+        }
+        supplied = {
+            name for name, value in requested_directions.items() if value is not None
+        }
+        allowed = allowed_directions[joint_type]
+        if supplied - allowed:
+            raise ValueError(
+                f"{joint_type} joints do not accept {sorted(supplied - allowed)}"
+            )
+        if allowed - supplied:
+            raise ValueError(
+                f"{joint_type} joints require directions {sorted(allowed)}"
+            )
+        selected = {name: requested_directions[name] for name in allowed}
+        if any(value not in {"x", "y", "z"} for value in selected.values()):
+            raise ValueError("Joint directions must be x, y or z")
+        if len(set(selected.values())) != len(selected):
+            raise ValueError("Joint motion directions must differ")
+        if joint_name is not None and (
+            not isinstance(joint_name, str) or not 1 <= len(joint_name) <= 100
+        ):
+            raise ValueError("Joint name must contain 1 to 100 characters")
         root = self._root()
-
-        occ1 = occ2 = None
-        for occ in root.allOccurrences:
-            if occ.component.name == component_one:
-                occ1 = occ
-            if occ.component.name == component_two:
-                occ2 = occ
-
-        if not occ1 or not occ2:
-            raise RuntimeError("One or both components not found")
+        if joint_name and any(
+            joint.name == joint_name
+            for _, _, joint in _mechanical_queries._all_joints(self)
+        ):
+            raise ValueError(f"Joint name '{joint_name}' already exists")
 
         as_built = root.asBuiltJoints
-        inp = as_built.createInput(occ1, occ2, None)
-        as_built.add(inp)
-        return {"created": True, "joint_type": joint_type}
+        occurrences = list(root.allOccurrences)
+
+        def select_occurrence(selector):
+            if not isinstance(selector, str) or not selector:
+                raise ValueError("Select an occurrence path or unique component name")
+            matches = [
+                item for item in occurrences if item.fullPathName == selector
+            ]
+            if not matches:
+                matches = [
+                    item for item in occurrences if item.component.name == selector
+                ]
+            if len(matches) != 1:
+                raise ValueError(
+                    f"Occurrence '{selector}' is missing or ambiguous; "
+                    "use its full occurrence path"
+                )
+            return matches[0]
+
+        occ1 = select_occurrence(component_one)
+        occ2 = select_occurrence(component_two)
+        if occ1 == occ2:
+            raise ValueError("Joint requires two different occurrences")
+        geometry = None
+        if joint_type != "rigid":
+            origin = occ1.component.originConstructionPoint.createForAssemblyContext(
+                occ1
+            )
+            geometry = adsk.fusion.JointGeometry.createByPoint(origin)
+            if geometry is None:
+                raise RuntimeError("As-built joint origin geometry creation failed")
+        joint_input = as_built.createInput(occ1, occ2, geometry)
+        directions = adsk.fusion.JointDirections
+        direction_values = {
+            "x": directions.XAxisJointDirection,
+            "y": directions.YAxisJointDirection,
+            "z": directions.ZAxisJointDirection,
+        }
+        if joint_type == "rigid":
+            accepted = joint_input.setAsRigidJointMotion()
+        elif joint_type == "revolute":
+            accepted = joint_input.setAsRevoluteJointMotion(
+                direction_values[selected["rotation_axis"]]
+            )
+        elif joint_type == "slider":
+            accepted = joint_input.setAsSliderJointMotion(
+                direction_values[selected["slide_direction"]]
+            )
+        elif joint_type == "cylindrical":
+            accepted = joint_input.setAsCylindricalJointMotion(
+                direction_values[selected["rotation_axis"]]
+            )
+        elif joint_type == "pin_slot":
+            accepted = joint_input.setAsPinSlotJointMotion(
+                direction_values[selected["rotation_axis"]],
+                direction_values[selected["slide_direction"]],
+            )
+        elif joint_type == "planar":
+            accepted = joint_input.setAsPlanarJointMotion(
+                direction_values[selected["normal_direction"]]
+            )
+        else:
+            accepted = joint_input.setAsBallJointMotion(
+                direction_values[selected["pitch_direction"]],
+                direction_values[selected["yaw_direction"]],
+            )
+        if not accepted:
+            raise RuntimeError(f"Fusion rejected {joint_type} as-built joint motion")
+        joint = as_built.add(joint_input)
+        if joint is None:
+            raise RuntimeError(
+                "As-built joint creation failed; inspect before retrying"
+            )
+        if joint_name:
+            joint.name = joint_name
+        return {
+            "created": True,
+            "joint_type": joint_type,
+            "directions": selected,
+            "joint_name": joint.name,
+            "occurrence_one": occ1.fullPathName,
+            "occurrence_two": occ2.fullPathName,
+        }
 
     def create_rigid_group(self, component_names: list, include_children: bool = True):
         root = self._root()
@@ -2977,16 +3169,27 @@ class CommandHandler:
         return {"created": True, "plane": plane, "offset": offset}
 
     def check_interference(
-        self, component_names: list, include_coincident_faces: bool = False
+        self,
+        component_names: list,
+        include_coincident_faces: bool = False,
+        cross_occurrence_only: bool = False,
     ):
+        if not isinstance(cross_occurrence_only, bool):
+            raise ValueError("cross_occurrence_only must be boolean")
         root = self._root()
         bodies = adsk.core.ObjectCollection.create()
+        body_occurrences = {}
+        body_occurrences_by_name = {}
 
         for name in component_names:
             for occ in root.allOccurrences:
                 if occ.component.name == name:
                     for b in occ.bRepBodies:
                         bodies.add(b)
+                        body_occurrences[b.entityToken] = occ.fullPathName
+                        body_occurrences_by_name.setdefault(b.name, set()).add(
+                            occ.fullPathName
+                        )
 
         if bodies.count < 2:
             raise RuntimeError("Need at least 2 components with bodies")
@@ -3003,10 +3206,36 @@ class CommandHandler:
         if interference is not None:
             for i in range(interference.count):
                 result = interference.item(i)
+                body_one, body_two = result.entityOne, result.entityTwo
+                context_one = body_one.assemblyContext
+                context_two = body_two.assemblyContext
+                def occurrence_path(body, context):
+                    path = body_occurrences.get(body.entityToken)
+                    if path:
+                        return path
+                    candidates = body_occurrences_by_name.get(body.name, set())
+                    if len(candidates) == 1:
+                        return next(iter(candidates))
+                    if context:
+                        return context.fullPathName
+                    return None
+
+                occurrence_one = occurrence_path(body_one, context_one)
+                occurrence_two = occurrence_path(body_two, context_two)
+                if cross_occurrence_only and (
+                    occurrence_one is None or occurrence_two is None
+                ):
+                    raise RuntimeError(
+                        "Cannot determine occurrence paths for interference result"
+                    )
+                if cross_occurrence_only and occurrence_one == occurrence_two:
+                    continue
                 results.append(
                     {
-                        "body_one": result.entityOne.name,
-                        "body_two": result.entityTwo.name,
+                        "body_one": body_one.name,
+                        "body_two": body_two.name,
+                        "occurrence_one": occurrence_one or "root",
+                        "occurrence_two": occurrence_two or "root",
                         "volume": result.interferenceBody.volume,
                     }
                 )

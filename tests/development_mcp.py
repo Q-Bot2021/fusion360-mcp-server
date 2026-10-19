@@ -361,6 +361,289 @@ STENCIL_CANDIDATES = tuple(
     get_tool_by_name(definition["name"]) or definition
     for definition in STENCIL_CANDIDATES
 )
+
+
+def _annotations(read_only: bool, idempotent: bool = False) -> dict:
+    return {
+        "readOnlyHint": read_only,
+        "destructiveHint": False,
+        "idempotentHint": read_only or idempotent,
+    }
+
+
+_PAGINATION = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "offset": {"type": "integer", "minimum": 0},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 200},
+    },
+}
+_VECTOR = {
+    "type": "array",
+    "minItems": 3,
+    "maxItems": 3,
+    "items": {"type": "number"},
+}
+_PLACEMENT = {
+    "translation": {
+        **_VECTOR,
+        "description": "Offset in cm in the parent component frame",
+    },
+    "rotation": {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["axis", "angle_degrees"],
+        "description": "Rotation about an axis through the parent origin",
+        "properties": {"axis": _VECTOR, "angle_degrees": {"type": "number"}},
+    },
+    "grounded": {"type": "boolean"},
+    "parent_component_name": {
+        "type": "string",
+        "description": "Unique owning component; omit for the root",
+    },
+}
+_JOINT_GEOMETRY = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["occurrence_path", "entity"],
+    "description": (
+        "Occurrence full path from list_occurrences (or root) and an entity: "
+        "component origin, or a body face/edge index from get_body_topology "
+        "with that occurrence_path. Planar faces use center; cylindrical or "
+        "conical faces use start/middle/end; edges use any key point."
+    ),
+    "properties": {
+        "occurrence_path": {"type": "string", "minLength": 1},
+        "entity": {"enum": ["face", "edge", "origin"]},
+        "body_name": {"type": "string", "minLength": 1},
+        "index": {"type": "integer", "minimum": 0},
+        "key_point": {"enum": ["start", "middle", "end", "center"]},
+    },
+}
+_DIRECTION = {"enum": ["x", "y", "z"]}
+_LIMITS = {
+    "type": "array",
+    "minItems": 2,
+    "maxItems": 2,
+    "items": {"type": "number"},
+}
+_MOTION_VALUES = {
+    name: {"type": "number"}
+    for name in (
+        "rotation_degrees", "slide", "primary_slide", "secondary_slide",
+        "pitch_degrees", "yaw_degrees", "roll_degrees",
+    )
+}
+_JOINT_TYPES = [
+    "rigid", "revolute", "slider", "cylindrical", "pin_slot", "planar", "ball",
+]
+
+ASSEMBLY_CANDIDATES = (
+    {
+        "name": "diagnose_document_save",
+        "title": "Development: Diagnose Document Save",
+        "description": (
+            "Read Personal Use editable-document quota and calculate slots to free "
+            "manually. Does not save or change editability. Quota evidence alone "
+            "does not prove a previous save failed because of the limit."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["document_id"],
+            "properties": {
+                "document_id": {"type": "string", "minLength": 1},
+                "required_slots": {
+                    "type": "integer", "minimum": 1, "maximum": 100, "default": 1
+                },
+            },
+        },
+        "annotations": _annotations(True),
+    },
+    {
+        "name": "open_design",
+        "title": "Development: Open Saved Design",
+        "description": (
+            "Open a saved Fusion design by data_file_id. The active document "
+            "must be saved before switching."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["data_file_id"],
+            "properties": {"data_file_id": {"type": "string", "minLength": 1}},
+        },
+        "annotations": _annotations(False),
+    },
+    {
+        "name": "list_occurrences",
+        "title": "Development: List Occurrences",
+        "description": (
+            "Paginate all occurrences with full paths, components, grounding, "
+            "external-reference and library/fastener flags, and transforms in cm"
+        ),
+        "inputSchema": _PAGINATION,
+        "annotations": _annotations(True),
+    },
+    {
+        "name": "add_occurrence",
+        "title": "Development: Add Component Occurrence",
+        "description": (
+            "Place another occurrence of an existing uniquely named component "
+            "in a parent component with explicit translation/rotation. "
+            + DIRECT_TOOL_CALLS
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["component_name"],
+            "properties": {
+                "component_name": {"type": "string", "minLength": 1},
+                **_PLACEMENT,
+            },
+        },
+        "annotations": _annotations(False),
+    },
+    {
+        "name": "insert_design",
+        "title": "Development: Insert Saved Design",
+        "description": (
+            "Insert a saved Fusion design by data_file_id as an occurrence. "
+            "Referenced inserts require the active document saved in the same "
+            "project; embedded inserts copy the design. " + DIRECT_TOOL_CALLS
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["data_file_id"],
+            "properties": {
+                "data_file_id": {"type": "string", "minLength": 1},
+                "parent_component_name": {"type": "string"},
+                "referenced": {"type": "boolean"},
+                **_PLACEMENT,
+            },
+        },
+        "annotations": _annotations(False),
+    },
+    {
+        "name": "set_design_intent",
+        "title": "Development: Set Design Intent",
+        "description": (
+            "Preview API: set active design intent to part, assembly or hybrid; "
+            "Fusion rejects unsupported transitions"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["intent"],
+            "properties": {"intent": {"enum": ["part", "assembly", "hybrid"]}},
+        },
+        "annotations": _annotations(False, idempotent=True),
+    },
+    {
+        "name": "list_joints",
+        "title": "Development: List Joints",
+        "description": (
+            "Paginate joints and as-built joints in all components with types, "
+            "occurrences, motion values (degrees/cm), limits and health"
+        ),
+        "inputSchema": _PAGINATION,
+        "annotations": _annotations(True),
+    },
+    {
+        "name": "create_joint",
+        "title": "Development: Create Joint",
+        "description": (
+            "Create a named rigid, revolute, slider, cylindrical, pin_slot, "
+            "planar or ball joint in the root between explicit geometries of two "
+            "occurrences. geometry_one's occurrence moves to geometry_two. "
+            "Directions are joint-frame axes; omit for type defaults. Limits use "
+            "degrees or cm. " + DIRECT_TOOL_CALLS
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["joint_name", "joint_type", "geometry_one", "geometry_two"],
+            "properties": {
+                "joint_name": {"type": "string", "minLength": 1, "maxLength": 100},
+                "joint_type": {"enum": _JOINT_TYPES},
+                "geometry_one": _JOINT_GEOMETRY,
+                "geometry_two": _JOINT_GEOMETRY,
+                "offset": {"type": "number"},
+                "angle_degrees": {"type": "number"},
+                "is_flipped": {"type": "boolean"},
+                "rotation_axis": _DIRECTION,
+                "slide_direction": _DIRECTION,
+                "normal_direction": _DIRECTION,
+                "pitch_direction": _DIRECTION,
+                "yaw_direction": _DIRECTION,
+                "rotation_limits_degrees": _LIMITS,
+                "slide_limits": _LIMITS,
+            },
+        },
+        "annotations": _annotations(False),
+    },
+    {
+        "name": "drive_joint",
+        "title": "Development: Drive Joint",
+        "description": (
+            "Set one named joint's motion values (degrees or cm) within enabled "
+            "limits and return resulting occurrence transforms. Fields depend on "
+            "joint type. " + DIRECT_TOOL_CALLS
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["joint_name", "values"],
+            "properties": {
+                "joint_name": {"type": "string", "minLength": 1},
+                "values": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "minProperties": 1,
+                    "properties": _MOTION_VALUES,
+                },
+            },
+        },
+        "annotations": _annotations(False, idempotent=True),
+    },
+    {
+        "name": "animate_joint",
+        "title": "Development: Animate Joint",
+        "description": (
+            "Step one joint motion field through 2-24 values, capturing a PNG "
+            "viewport frame per step into a new temporary directory, then "
+            "restore the initial value by default. Returns frame paths and "
+            "actual values."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["joint_name", "field", "values"],
+            "properties": {
+                "joint_name": {"type": "string", "minLength": 1},
+                "field": {"enum": list(_MOTION_VALUES)},
+                "values": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 24,
+                    "items": {"type": "number"},
+                },
+                "view": {
+                    "enum": [
+                        "current", "iso", "front", "back", "top", "bottom",
+                        "left", "right",
+                    ],
+                },
+                "width": {"type": "integer", "minimum": 64, "maximum": 1600},
+                "height": {"type": "integer", "minimum": 64, "maximum": 1600},
+                "restore": {"type": "boolean"},
+            },
+        },
+        "annotations": _annotations(False, idempotent=True),
+    },
+)
 DOCUMENT_CANDIDATES = tuple(
     get_tool_by_name(definition["name"]) or definition
     for definition in DOCUMENT_CANDIDATES
@@ -392,6 +675,7 @@ def development_lookup(name: str) -> dict | None:
         DRAWING_INFO,
         *DOCUMENT_CANDIDATES,
         *STENCIL_CANDIDATES,
+        *ASSEMBLY_CANDIDATES,
     ):
         if name == definition["name"]:
             return get_tool_by_name(name) or definition
@@ -411,6 +695,7 @@ def development_list() -> list[types.Tool]:
                 DRAWING_INFO,
                 *DOCUMENT_CANDIDATES,
                 *STENCIL_CANDIDATES,
+                *ASSEMBLY_CANDIDATES,
             )
             if get_tool_by_name(definition["name"]) is None
         ),

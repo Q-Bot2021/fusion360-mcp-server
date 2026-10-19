@@ -1,0 +1,686 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Verify stencil development changes",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"-q",
+				"--junitxml=.pytest_cache/stencil-normal-tests.xml"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Lint stencil development changes",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"ruff",
+				"check"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Verify single-line stencil labels",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_stencil_workflow.py",
+				"-q",
+				"--junitxml=.pytest_cache/stencil-label-tests.xml"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Create corrected single-line circle stencil",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"scripts.create_stencils",
+				"--create-authorized-stencils",
+				"--repair-small-labels",
+				"--report",
+				".pytest_cache/stencil-label-repair.json"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify saved correction and complete remaining stencils",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"scripts.create_stencils",
+				"--create-authorized-stencils",
+				"--resume-report",
+				"--report",
+				".pytest_cache/stencil-label-repair.json"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Format stencil workflow edits",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"ruff",
+				"format",
+				"scripts/create_stencils.py",
+				"tests/test_stencil_workflow.py"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Lint corrected stencil workflow",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"ruff",
+				"check",
+				"scripts/create_stencils.py",
+				"tests/test_stencil_workflow.py"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify visible MCP workflow instructions",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_protocol_e2e.py",
+				"tests/test_development_registration.py",
+				"tests/test_tools.py",
+				"tests/test_server.py",
+				"-q",
+				"--junitxml=.pytest_cache/visible-workflow-tests.xml"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Lint visible MCP workflow instructions",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"ruff",
+				"check",
+				"src/fusion360_mcp/tools.py",
+				"src/fusion360_mcp/server.py",
+				"tests/development_mcp.py",
+				"tests/test_protocol_e2e.py",
+				"tests/test_development_registration.py"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify client-visible instructions live",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_development_registration.py",
+				"-k",
+				"visible_workflow_instructions_live",
+				"--run-fusion-e2e",
+				"-q",
+				"--junitxml=.pytest_cache/visible-workflow-live.xml"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify production design inventory",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_mechanical_coverage.py",
+				"-q"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Check staged production add-in syntax",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"py_compile",
+				"${env:APPDATA}\\Autodesk\\Autodesk Fusion 360\\API\\AddIns\\Fusion360MCP\\server\\command_handler.py",
+				"${env:APPDATA}\\Autodesk\\Autodesk Fusion 360\\API\\AddIns\\Fusion360MCP\\server\\mechanical_queries.py"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify create_design through production MCP",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_development_registration.py",
+				"-k",
+				"create_new_fusion_design_live and production",
+				"--run-fusion-e2e",
+				"-q",
+				"--junitxml=.pytest_cache/create-design-production-live.xml"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify production create_design changes",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"-q",
+				"--junitxml=.pytest_cache/create-design-normal.xml"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Lint production create_design changes",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"ruff",
+				"check",
+				"src/fusion360_mcp/tools.py",
+				"src/fusion360_mcp/mock.py",
+				"tests/development_mcp.py",
+				"tests/test_development_registration.py",
+				"tests/test_mechanical_protocol.py",
+				"tests/test_mechanical_coverage.py",
+				"tests/test_mechanical_queries.py"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify generic geometry development live",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_sandbox_live.py",
+				"-k",
+				"generic_geometry_candidates_live",
+				"--run-fusion-e2e",
+				"-q",
+				"--junitxml=.pytest_cache/generic-geometry-live.xml"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify generic candidate units",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_sandbox_documents.py",
+				"tests/test_development_registration.py",
+				"-q"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify generic candidate mocks",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_mock.py",
+				"-k",
+				"generic_candidate",
+				"-q"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify generic save development live",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_sandbox_live.py",
+				"-k",
+				"generic_save_candidate_live and development",
+				"--run-fusion-e2e",
+				"-q",
+				"--junitxml=.pytest_cache/generic-save-development-live.xml"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify generic production acceptance",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_sandbox_live.py",
+				"-k",
+				"production and (generic_geometry_candidates_live or generic_save_candidate_live)",
+				"--run-fusion-e2e",
+				"-q",
+				"--junitxml=.pytest_cache/generic-production-live.xml"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify component object inspection",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_addon_api_usage.py",
+				"-k",
+				"object_info",
+				"-q"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify object inspection protocol",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_addon_api_usage.py",
+				"tests/test_protocol_e2e.py",
+				"tests/test_mock.py",
+				"-q"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify object inspection development live",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_sandbox_live.py",
+				"-k",
+				"component_object_info_live and development",
+				"--run-fusion-e2e",
+				"-q",
+				"--junitxml=.pytest_cache/object-inspection-development-live.xml"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify legacy target uniqueness",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_addon_api_usage.py",
+				"-k",
+				"legacy",
+				"-q"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify audit HTML renderer",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_mechanical_coverage.py",
+				"-k",
+				"html_renderer",
+				"-q"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify audit maintenance instructions",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_instructions_sync.py",
+				"-q"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Publish audit HTML ledger",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"scripts.audit_mechanical_api",
+				"docs/mechanical/audit-ledger.html",
+				"--html"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify published audit ledger",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_mechanical_coverage.py",
+				"tests/test_instructions_sync.py",
+				"-q"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify audit renderer CLI",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_mechanical_coverage.py",
+				"-k",
+				"html_cli or html_renderer",
+				"-q"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify appearance target preflight",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_addon_api_usage.py",
+				"-k",
+				"appearance_invalid_target",
+				"-q"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify production component inspection",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_sandbox_live.py",
+				"-k",
+				"component_object_info_live and production",
+				"--run-fusion-e2e",
+				"-q",
+				"--junitxml=.pytest_cache/object-inspection-production-live.xml"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify generic scene inventory unit",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_addon_api_usage.py",
+				"-k",
+				"scene_info_enumerates",
+				"-q"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify scene inventory development live",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_sandbox_live.py",
+				"-k",
+				"component_object_info_live and development",
+				"--run-fusion-e2e",
+				"-q",
+				"--junitxml=.pytest_cache/scene-inspection-development-live.xml"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify generic sketch targets development live",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_sandbox_live.py",
+				"-k",
+				"generic_geometry_candidates_live and development",
+				"--run-fusion-e2e",
+				"-q",
+				"--junitxml=.pytest_cache/generic-sketch-development-live.xml"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify production appearance assignment",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_sandbox_live.py",
+				"-k",
+				"test_set_appearance_valid_target_live",
+				"--run-fusion-e2e",
+				"-q",
+				"--junitxml=.pytest_cache/appearance-production-live.xml"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify generic edge features development live",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_sandbox_live.py",
+				"-k",
+				"generic_geometry_candidates_live and development",
+				"--run-fusion-e2e",
+				"-q",
+				"--junitxml=.pytest_cache/generic-edge-development-live-final.xml"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify component sketch development live",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_sandbox_live.py",
+				"-k",
+				"component_sketch_family_production_live",
+				"--run-fusion-e2e",
+				"-q",
+				"--junitxml=.pytest_cache/component-sketch-development-live.xml"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify component sketch development live final",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_sandbox_live.py",
+				"-k",
+				"component_sketch_family_live and development",
+				"--run-fusion-e2e",
+				"-q",
+				"--junitxml=.pytest_cache/component-sketch-development-live-final.xml"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify full component sketch development live",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_sandbox_live.py",
+				"-k",
+				"generic_geometry_candidates_live and development",
+				"--run-fusion-e2e",
+				"-q",
+				"--junitxml=.pytest_cache/component-sketch-family-development-live.xml"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify generic geometry development live current",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_sandbox_live.py",
+				"-k",
+				"generic_geometry_candidates_live and development",
+				"--run-fusion-e2e",
+				"-q",
+				"--junitxml=.pytest_cache/generic-sketch-development-current.xml"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify generic geometry development current 2",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_sandbox_live.py",
+				"-k",
+				"generic_geometry_candidates_live and development",
+				"--run-fusion-e2e",
+				"-q",
+				"--junitxml=.pytest_cache/generic-sketch-development-current-2.xml"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify component sketch unit tests",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_addon_api_usage.py",
+				"-k",
+				"sketch_lookup or create_sketch_uses_explicit_component",
+				"-q"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify component sketch dispatch units",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_addon_api_usage.py",
+				"-k",
+				"sketch_operations_forward_explicit_component_selector",
+				"-q"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify remaining geometry audit gates",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_mechanical_coverage.py",
+				"tests/test_instructions_sync.py",
+				"-k",
+				"not fresh",
+				"-q"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify remaining primitives and parameters live",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_sandbox_live.py",
+				"-k",
+				"remaining_primitive_production_live or remaining_parameters_production_live",
+				"--run-fusion-e2e",
+				"-q",
+				"--junitxml=.pytest_cache/remaining-primitives-parameters-live.xml"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify parameter audit regressions",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"tests/test_parameter_units.py",
+				"tests/test_mock.py",
+				"tests/test_tools.py",
+				"-q"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Format remaining audit live cases",
+			"type": "shell",
+			"command": ".venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"ruff",
+				"format",
+				"tests/test_sandbox_live.py"
+			],
+			"isBackground": false
+		}
+	]
+}

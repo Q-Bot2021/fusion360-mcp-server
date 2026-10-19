@@ -856,11 +856,27 @@ class TestMockAssemblyExtended:
                 "component_one": "Arm",
                 "component_two": "Base",
                 "joint_type": "revolute",
+                "joint_name": "DoorHinge",
+                "rotation_axis": "y",
             },
         )
         assert result["component_one"] == "Arm"
         assert result["joint_type"] == "revolute"
-        assert "joint_name" in result
+        assert result["directions"] == {"rotation_axis": "y"}
+        assert result["joint_name"] == "DoorHinge"
+
+    def test_insert_design_forwards_reference_mode(self):
+        result = mock_command("insert_design", {
+            "data_file_id": "part-file",
+            "referenced": True,
+        })
+        assert result["data_file_id"] == "part-file"
+        assert result["is_referenced"] is True
+
+    def test_list_occurrences_is_an_explicit_empty_snapshot(self):
+        result = mock_command("list_occurrences", {"offset": 2, "limit": 5})
+        assert result["occurrences"] == []
+        assert result["total"] == 0
 
     def test_create_rigid_group(self):
         result = mock_command(
@@ -927,9 +943,11 @@ class TestMockInspection:
             "check_interference",
             {
                 "component_names": ["Gear1", "Gear2"],
+                "cross_occurrence_only": True,
             },
         )
         assert result["component_names"] == ["Gear1", "Gear2"]
+        assert result["cross_occurrence_only"] is True
         assert "interference_count" in result
 
 

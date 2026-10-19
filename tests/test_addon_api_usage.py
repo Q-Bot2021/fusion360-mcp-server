@@ -11,6 +11,7 @@ Neither would have been caught by a test that only asserted on return values.
 from __future__ import annotations
 
 import ast
+import math
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -135,6 +136,240 @@ def test_object_info_rejects_invalid_or_missing_owner(object_info_case, argument
     method, handler, root, component, collection = object_info_case
     with pytest.raises(ValueError):
         method(handler, "Part", **arguments)
+
+
+@pytest.mark.parametrize("direction", ["positive", "negative", "symmetric"])
+def test_extrude_uses_explicit_extent_direction(direction):
+    profile = object()
+    profiles = SimpleNamespace(count=1, item=lambda index: profile)
+    sketch = SimpleNamespace(profiles=profiles)
+    feature = SimpleNamespace(name="Extrude1")
+    extrusion = object()
+    extents = []
+    extrudes = SimpleNamespace(
+        createInput=Mock(return_value=extrusion), add=Mock(return_value=feature)
+    )
+    owner = SimpleNamespace(
+        features=SimpleNamespace(extrudeFeatures=extrudes)
+    )
+    namespace = {
+        "math": math,
+        "_mechanical_queries": SimpleNamespace(
+            set_extrude_extent=lambda *args: extents.append(args)
+        ),
+        "adsk": SimpleNamespace(core=object(), fusion=object()),
+    }
+    method = _method("extrude")
+    exec(
+        compile(ast.Module(body=[method], type_ignores=[]), str(HANDLER), "exec"),
+        namespace,
+    )
+    handler = SimpleNamespace(
+        _sketch_by_name=lambda name, component_name: sketch,
+        _component_for_sketch=lambda selected: owner,
+        _operation_type=lambda operation: operation,
+    )
+
+    result = namespace["extrude"](
+        handler,
+        0.8,
+        operation="cut",
+        direction=direction,
+        sketch_name="Mortise",
+        component_name="Frame",
+    )
+
+    assert result["feature_name"] == "Extrude1"
+    assert extents == [(extrusion, namespace["adsk"].core,
+                        namespace["adsk"].fusion, 0.8, direction)]
+
+
+@pytest.mark.parametrize(
+    "joint_type,setter,axis_arguments,axes",
+    [
+        ("rigid", "setAsRigidJointMotion", {}, ()),
+        ("revolute", "setAsRevoluteJointMotion", {"rotation_axis": "y"}, ("y",)),
+        ("slider", "setAsSliderJointMotion", {"slide_direction": "x"}, ("x",)),
+        (
+            "cylindrical", "setAsCylindricalJointMotion",
+            {"rotation_axis": "y"}, ("y",),
+        ),
+        (
+            "pin_slot", "setAsPinSlotJointMotion",
+            {"rotation_axis": "y", "slide_direction": "z"}, ("y", "z"),
+        ),
+        ("planar", "setAsPlanarJointMotion", {"normal_direction": "x"}, ("x",)),
+        (
+            "ball", "setAsBallJointMotion",
+            {"pitch_direction": "y", "yaw_direction": "z"}, ("y", "z"),
+        ),
+    ],
+)
+@pytest.mark.parametrize("explicit_path", [False, True])
+def test_as_built_joint_applies_requested_motion(
+    joint_type, setter, axis_arguments, axes, explicit_path
+):
+    assembly_origin = object()
+    first_origin_proxy = SimpleNamespace(
+        createForAssemblyContext=Mock(return_value=assembly_origin)
+    )
+    first_component = SimpleNamespace(
+        name="Frame", originConstructionPoint=first_origin_proxy
+    )
+    second_component = SimpleNamespace(
+        name="Door", originConstructionPoint=object()
+    )
+    first_occurrence = SimpleNamespace(
+        component=first_component, fullPathName="UpperHinge:1+Frame:1"
+    )
+    second_occurrence = SimpleNamespace(
+        component=second_component, fullPathName="Door:1"
+    )
+    joint = SimpleNamespace(name="Joint1")
+    joint_input = Mock()
+    joint_geometry = object()
+    create_geometry = Mock(return_value=joint_geometry)
+    as_built = SimpleNamespace(
+        createInput=Mock(return_value=joint_input),
+        add=Mock(return_value=joint),
+    )
+    root = SimpleNamespace(
+        allOccurrences=[first_occurrence, second_occurrence],
+        asBuiltJoints=as_built,
+    )
+    if explicit_path:
+        root.allOccurrences.append(SimpleNamespace(
+            component=first_component, fullPathName="LowerHinge:1+Frame:1"
+        ))
+    directions = SimpleNamespace(
+        XAxisJointDirection="x",
+        YAxisJointDirection="y",
+        ZAxisJointDirection="z",
+    )
+    fusion = SimpleNamespace(
+        JointDirections=directions,
+        JointGeometry=SimpleNamespace(createByPoint=create_geometry),
+    )
+    namespace = {"adsk": SimpleNamespace(fusion=fusion)}
+    namespace["_mechanical_queries"] = SimpleNamespace(_all_joints=lambda h: [])
+    method = _method("create_as_built_joint")
+    exec(
+        compile(ast.Module(body=[method], type_ignores=[]), str(HANDLER), "exec"),
+        namespace,
+    )
+    handler = SimpleNamespace(_root=lambda: root)
+
+    result = namespace["create_as_built_joint"](
+        handler,
+        first_occurrence.fullPathName if explicit_path else "Frame",
+        "Door",
+        joint_type,
+        joint_name="TestJoint",
+        **axis_arguments,
+    )
+
+    geometry = None
+    if joint_type != "rigid":
+        geometry = joint_geometry
+        first_origin_proxy.createForAssemblyContext.assert_called_once_with(
+            first_occurrence
+        )
+        create_geometry.assert_called_once_with(assembly_origin)
+    else:
+        first_origin_proxy.createForAssemblyContext.assert_not_called()
+        create_geometry.assert_not_called()
+    as_built.createInput.assert_called_once_with(
+        first_occurrence, second_occurrence, geometry
+    )
+    getattr(joint_input, setter).assert_called_once_with(*axes)
+    as_built.add.assert_called_once_with(joint_input)
+    assert result == {
+        "created": True,
+        "joint_type": joint_type,
+        "directions": axis_arguments,
+        "joint_name": "TestJoint",
+        "occurrence_one": first_occurrence.fullPathName,
+        "occurrence_two": second_occurrence.fullPathName,
+    }
+
+
+@pytest.mark.parametrize("first,second", [
+    ("Frame", "Door:1"), ("Missing:1", "Door:1"), ("Door:1", "Door:1"),
+])
+def test_as_built_joint_rejects_ambiguous_missing_and_same_occurrences(first, second):
+    occurrences = [
+        SimpleNamespace(component=SimpleNamespace(name="Frame"),
+                        fullPathName="Upper:1+Frame:1"),
+        SimpleNamespace(component=SimpleNamespace(name="Frame"),
+                        fullPathName="Lower:1+Frame:1"),
+        SimpleNamespace(component=SimpleNamespace(name="Door"), fullPathName="Door:1"),
+    ]
+    as_built = Mock()
+    handler = SimpleNamespace(_root=lambda: SimpleNamespace(
+        allOccurrences=occurrences, asBuiltJoints=as_built
+    ))
+    namespace = {}
+    exec(compile(ast.Module(body=[_method("create_as_built_joint")],
+                            type_ignores=[]), str(HANDLER), "exec"), namespace)
+    with pytest.raises(ValueError):
+        namespace["create_as_built_joint"](handler, first, second, "rigid")
+    as_built.createInput.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "joint_type,arguments",
+    [
+        ("revolute", {}),
+        ("pin_slot", {"rotation_axis": "z"}),
+        ("ball", {"pitch_direction": "z", "yaw_direction": "z"}),
+    ],
+)
+def test_as_built_joint_rejects_missing_or_duplicate_directions(
+    joint_type, arguments
+):
+    method = _method("create_as_built_joint")
+    namespace = {"ValueError": ValueError}
+    exec(
+        compile(ast.Module(body=[method], type_ignores=[]), str(HANDLER), "exec"),
+        namespace,
+    )
+    handler = SimpleNamespace(_root=Mock())
+
+    with pytest.raises(ValueError, match="directions"):
+        namespace["create_as_built_joint"](
+            handler, "Frame", "Door", joint_type, **arguments
+        )
+    handler._root.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "method_name,requested,expected",
+    [
+        ("suppress_feature", True, True),
+        ("unsuppress_feature", False, False),
+    ],
+)
+def test_timeline_controls_update_suppressible_entity(
+    method_name, requested, expected
+):
+    entity = SimpleNamespace(name="DoorHinge", isSuppressed=not requested)
+    timeline_item = SimpleNamespace(entity=entity, isSuppressed=not requested)
+    design = SimpleNamespace(
+        timeline=SimpleNamespace(count=1, item=lambda index: timeline_item)
+    )
+    namespace = {}
+    method = _method(method_name)
+    exec(
+        compile(ast.Module(body=[method], type_ignores=[]), str(HANDLER), "exec"),
+        namespace,
+    )
+    handler = SimpleNamespace(_design=lambda: design)
+
+    result = namespace[method_name](handler, "DoorHinge")
+
+    assert entity.isSuppressed is expected
+    assert timeline_item.isSuppressed is expected
+    assert result["feature"] == "DoorHinge"
 
 
 def test_scene_info_enumerates_root_nested_and_repeated_occurrences():
@@ -830,7 +1065,7 @@ def test_sketch_operations_forward_explicit_component_selector(
         _sketch_by_name=selection,
         _last_sketch=Mock(side_effect=SelectedTarget),
     )
-    namespace = {}
+    namespace = {"math": math}
     node = _method(method_name)
     exec(
         compile(ast.Module(body=[node], type_ignores=[]), str(HANDLER), "exec"),
@@ -1109,6 +1344,99 @@ class TestCheckInterference:
         assert "interferenceResultCount" not in attrs, (
             "interferenceResultCount belongs to the old, non-existent API"
         )
+
+    def test_cross_occurrence_mode_filters_same_occurrence_pairs(self):
+        def body(name, occurrence_path, token=None, include_context=True):
+            return SimpleNamespace(
+                name=name,
+                entityToken=token or occurrence_path + ":" + name,
+                assemblyContext=(
+                    SimpleNamespace(fullPathName=occurrence_path)
+                    if include_context else None
+                ),
+            )
+
+        same_occurrence = SimpleNamespace(
+            entityOne=body("Jamb", "", "result-jamb", False),
+            entityTwo=body("Head", "", "result-head", False),
+            interferenceBody=SimpleNamespace(volume=1200.0),
+        )
+        cross_occurrence = SimpleNamespace(
+            entityOne=body("FrameKnuckle", "", "result-frame", False),
+            entityTwo=body("DoorLeaf", "", "result-door", False),
+            interferenceBody=SimpleNamespace(volume=0.26),
+        )
+        class ObjectCollection:
+            def __init__(self):
+                self.values = []
+
+            def add(self, value):
+                self.values.append(value)
+
+            @property
+            def count(self):
+                return len(self.values)
+
+        class Results:
+            count = 2
+
+            def item(self, index):
+                return [same_occurrence, cross_occurrence][index]
+
+        class Design:
+            def createInterferenceInput(self, selected):
+                assert selected.count == 4
+                return SimpleNamespace(areCoincidentFacesIncluded=False)
+
+            def analyzeInterference(self, _input):
+                return Results()
+
+        frame = SimpleNamespace(
+            fullPathName="Frame:1",
+            component=SimpleNamespace(name="Frame"),
+            bRepBodies=[
+                body("FrameKnuckle", "Frame:1"),
+                body("Jamb", "Frame:1"),
+                body("Head", "Frame:1"),
+            ],
+        )
+        door = SimpleNamespace(
+            fullPathName="Door:1",
+            component=SimpleNamespace(name="Door"),
+            bRepBodies=[body("DoorLeaf", "Door:1")],
+        )
+        root = SimpleNamespace(allOccurrences=[frame, door])
+        handler = SimpleNamespace(
+            _root=lambda: root,
+            _design=lambda: Design(),
+        )
+        namespace = {
+            "adsk": SimpleNamespace(
+                core=SimpleNamespace(ObjectCollection=SimpleNamespace(
+                    create=ObjectCollection
+                ))
+            )
+        }
+        method = _method("check_interference")
+        exec(
+            compile(ast.Module(body=[method], type_ignores=[]), str(HANDLER), "exec"),
+            namespace,
+        )
+
+        result = namespace["check_interference"](
+            handler, ["Frame", "Door"], cross_occurrence_only=True
+        )
+
+        assert result["count"] == 1
+        assert result["interferences"] == [
+            {
+                "body_one": "FrameKnuckle",
+                "body_two": "DoorLeaf",
+                "occurrence_one": "Frame:1",
+                "occurrence_two": "Door:1",
+                "volume": 0.26,
+            }
+        ]
 
 
 class TestDraftFaces:

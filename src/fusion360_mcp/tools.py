@@ -1758,7 +1758,10 @@ TOOLS: list[dict] = [
         "title": "Create As-Built Joint",
         "description": (
             "Create a joint from components' current positions "
-            "(easier than geometric joints)"
+            "(easier than geometric joints). Non-rigid types require explicit "
+            "joint-frame directions for their degrees of freedom. Select full "
+            "occurrence paths from list_occurrences or unique component names; "
+            "ambiguous names are rejected."
         ),
         "inputSchema": {
             "type": "object",
@@ -1782,6 +1785,94 @@ TOOLS: list[dict] = [
                         "ball",
                     ],
                     "default": "rigid",
+                },
+                "joint_name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100,
+                },
+                "rotation_axis": {"type": "string", "enum": ["x", "y", "z"]},
+                "slide_direction": {
+                    "type": "string", "enum": ["x", "y", "z"]
+                },
+                "normal_direction": {
+                    "type": "string", "enum": ["x", "y", "z"]
+                },
+                "pitch_direction": {
+                    "type": "string", "enum": ["x", "y", "z"]
+                },
+                "yaw_direction": {"type": "string", "enum": ["x", "y", "z"]},
+            },
+        },
+    },
+    {
+        "name": "open_design",
+        "title": "Open Saved Design",
+        "description": (
+            "Activate a saved Fusion design by data_file_id. The current document "
+            "must be saved before switching; returns the opened document identity."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "required": ["data_file_id"],
+            "additionalProperties": False,
+            "properties": {"data_file_id": {"type": "string", "minLength": 1}},
+        },
+    },
+    {
+        "name": "insert_design",
+        "title": "Insert Saved Design",
+        "description": (
+            "Insert a saved Fusion design as a referenced or embedded component "
+            "occurrence. Referenced insertion requires the active design saved in "
+            "the same project. Translation values are cm in the parent frame."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "required": ["data_file_id"],
+            "additionalProperties": False,
+            "properties": {
+                "data_file_id": {"type": "string", "minLength": 1},
+                "parent_component_name": {"type": "string"},
+                "translation": {
+                    "type": "array",
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "items": {"type": "number"},
+                },
+                "rotation": {
+                    "type": "object",
+                    "required": ["axis", "angle_degrees"],
+                    "additionalProperties": False,
+                    "properties": {
+                        "axis": {
+                            "type": "array",
+                            "minItems": 3,
+                            "maxItems": 3,
+                            "items": {"type": "number"},
+                        },
+                        "angle_degrees": {"type": "number"},
+                    },
+                },
+                "grounded": {"type": "boolean", "default": False},
+                "referenced": {"type": "boolean", "default": True},
+            },
+        },
+    },
+    {
+        "name": "list_occurrences",
+        "title": "List Component Occurrences",
+        "description": (
+            "Paginate all component occurrences with full paths, referenced and "
+            "library-item flags, body counts, and transforms."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "offset": {"type": "integer", "minimum": 0, "default": 0},
+                "limit": {
+                    "type": "integer", "minimum": 1, "maximum": 200, "default": 100
                 },
             },
         },
@@ -1906,6 +1997,14 @@ TOOLS: list[dict] = [
                     "type": "boolean",
                     "default": False,
                     "description": ("Count touching faces as interference"),
+                },
+                "cross_occurrence_only": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "Report only collisions between distinct occurrences; "
+                        "results include both full occurrence paths"
+                    ),
                 },
             },
         },
@@ -2815,6 +2914,7 @@ _READ_ONLY = {
     "get_body_topology",
     "get_feature_health",
     "get_document_state",
+    "list_occurrences",
     "get_scene_info",
     "get_object_info",
     "get_bounding_box",
@@ -2842,6 +2942,7 @@ _IDEMPOTENT = {
     "get_body_topology",
     "get_feature_health",
     "get_document_state",
+    "list_occurrences",
     "ping",
     "get_scene_info",
     "get_object_info",

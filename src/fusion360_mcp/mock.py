@@ -57,6 +57,7 @@ _MUTATION_MOCKS: frozenset[str] = frozenset(
         "unfold",
         "delete_all",
         "undo",
+        "insert_design",
         "set_parameter",
         "execute_code",
         "auto_constrain",
@@ -967,7 +968,49 @@ def _create_as_built_joint(p: dict) -> dict:
         "component_one": p.get("component_one", "Comp1"),
         "component_two": p.get("component_two", "Comp2"),
         "joint_type": p.get("joint_type", "rigid"),
-        "joint_name": "AsBuiltJoint_mock",
+        "directions": {
+            name: p[name]
+            for name in (
+                "rotation_axis",
+                "slide_direction",
+                "normal_direction",
+                "pitch_direction",
+                "yaw_direction",
+            )
+            if name in p
+        },
+        "joint_name": p.get("joint_name", "AsBuiltJoint_mock"),
+        "occurrence_one": p.get("component_one", "Comp1"),
+        "occurrence_two": p.get("component_two", "Comp2"),
+    }
+
+
+def _open_design(p: dict) -> dict:
+    return {
+        "document_id": "opened-document-mock",
+        "document_name": p.get("data_file_id", "Design_mock"),
+        "is_saved": True,
+        "data_file_id": p.get("data_file_id", "design-file-mock"),
+        "project_name": "MCP_Dev",
+    }
+
+
+def _insert_design(p: dict) -> dict:
+    return {
+        "data_file_id": p.get("data_file_id", "design-file-mock"),
+        "component_name": "InsertedDesign_mock",
+        "path": "InsertedDesign:1",
+        "is_referenced": p.get("referenced", True),
+        "simulated": True,
+    }
+
+
+def _list_occurrences(_p: dict) -> dict:
+    return {
+        "total": 0,
+        "offset": 0,
+        "occurrences": [],
+        "next_offset": None,
     }
 
 
@@ -1021,6 +1064,7 @@ def _create_section_analysis(p: dict) -> dict:
 def _check_interference(p: dict) -> dict:
     return {
         "component_names": p.get("component_names", []),
+        "cross_occurrence_only": p.get("cross_occurrence_only", False),
         "interference_count": 0,
         "interferences": [],
     }
@@ -1373,6 +1417,9 @@ _DISPATCH: dict[str, Any] = {
     "create_torus": _create_torus,
     # assembly (extended)
     "create_as_built_joint": _create_as_built_joint,
+    "open_design": _open_design,
+    "insert_design": _insert_design,
+    "list_occurrences": _list_occurrences,
     "create_rigid_group": _create_rigid_group,
     # inspection / analysis
     "measure_distance": _measure_distance,

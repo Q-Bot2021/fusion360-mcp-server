@@ -136,6 +136,7 @@ class TestToolAnnotations:
             "get_object_info",
             "get_bounding_box",
             "list_components",
+            "list_occurrences",
             "get_parameters",
             "get_physical_properties",
             "measure_distance",

@@ -16,7 +16,7 @@ chamfer_edges	accepted_scope
 check_interference	review_required
 circular_pattern	review_required
 compare_meshes	review_required
-create_as_built_joint	review_required
+create_as_built_joint	development_accepted
 create_bend	review_required
 create_box	review_required
 create_box_parametric	review_required
@@ -52,7 +52,7 @@ export_stl	review_required
 export_view_sheet	review_required
 extend_curve	accepted_scope
 extrude	review_required
-extrude_sketch_entities	accepted_scope
+extrude_sketch_entities	review_required
 fillet	accepted_scope
 flat_pattern	review_required
 get_body_topology	accepted_scope
@@ -65,6 +65,8 @@ get_parameters	accepted_scope
 get_physical_properties	review_required
 get_scene_info	accepted_scope
 import_mesh	review_required
+insert_design	development_accepted
+list_occurrences	development_accepted
 list_components	review_required
 loft	accepted_scope
 measure_angle	review_required
@@ -73,6 +75,7 @@ mirror	accepted_scope
 move_body	accepted_scope
 offset_curve	accepted_scope
 offset_faces	review_required
+open_design	review_required
 patch_surface	review_required
 ping	review_required
 project_geometry	accepted_scope

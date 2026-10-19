@@ -20,6 +20,51 @@ queries = test_mechanical_queries.queries
 design = test_mechanical_queries.design
 
 
+def test_save_diagnostic_candidate_protocol(queries, monkeypatch):
+    from types import SimpleNamespace
+
+    import fusion360_mcp.server as server
+
+    handler = SimpleNamespace(app=SimpleNamespace(
+        activeDocument=SimpleNamespace(
+            isValid=True, creationId="quota-doc", isSaved=False
+        ),
+        data=SimpleNamespace(personalUseLimits=SimpleNamespace(
+            isValid=True, editableFileCount=10, maxEditableFileCount=10
+        )),
+    ))
+
+    def send(mode, name, params, **kwargs):
+        assert name == "diagnose_document_save"
+        assert not kwargs.get("mutation", False)
+        return queries.diagnose_document_save(handler, **params)
+
+    monkeypatch.setattr(server, "_send", send)
+
+    async def check():
+        app = build_server(
+            "socket", tool_list=development_list,
+            tool_lookup=development_lookup, structured_results=True,
+        )
+        async with create_connected_server_and_client_session(app) as session:
+            tools = {tool.name: tool for tool in (await session.list_tools()).tools}
+            assert tools["diagnose_document_save"].annotations.readOnlyHint
+            result = await session.call_tool("diagnose_document_save", {
+                "document_id": "quota-doc", "required_slots": 3,
+            })
+            assert not result.isError
+            assert result.structuredContent["documents_to_make_read_only"] == 3
+            for arguments in ({"document_id": "stale"}, {
+                "document_id": "quota-doc", "required_slots": 0,
+            }):
+                assert (await session.call_tool(
+                    "diagnose_document_save", arguments
+                )).isError
+        assert get_tool_by_name("diagnose_document_save") is None
+
+    anyio.run(check)
+
+
 def test_candidates_and_resources_through_mcp(queries, design, monkeypatch):
     import fusion360_mcp.server as server
     import tests.development_mcp as development
@@ -80,7 +125,13 @@ def test_promoted_queries_through_production_stdio():
                 if tool.name == "auto_constrain")
         assert "License-gated" in licensed.description
         assert "eligible licensed users" in licensed.description
-        assert {"get_feature_health", "get_document_state"} <= names
+        assert {
+            "get_feature_health",
+            "get_document_state",
+            "open_design",
+            "insert_design",
+            "list_occurrences",
+        } <= names
         assert "get_drawing_info" not in names
         assert "dev_reload_candidates" not in names
         feature = await session.call_tool("get_feature_health", {"limit": 1})
@@ -89,6 +140,24 @@ def test_promoted_queries_through_production_stdio():
         assert not state.isError and "mock-document" in state.content[0].text
         assert "development_only" not in feature.content[0].text
         assert "development_only" not in state.content[0].text
+        opened = await session.call_tool(
+            "open_design", {"data_file_id": "saved-design-id"}
+        )
+        assert not opened.isError and "saved-design-id" in opened.content[0].text
+        inserted = await session.call_tool("insert_design", {
+            "data_file_id": "part-file-id", "referenced": True,
+        })
+        assert not inserted.isError and "is_referenced" in inserted.content[0].text
+        occurrences = await session.call_tool("list_occurrences", {})
+        assert not occurrences.isError and "occurrences" in occurrences.content[0].text
+        selected_joint = await session.call_tool("create_as_built_joint", {
+            "component_one": "Upper:1+HingeLeaf:1",
+            "component_two": "Door:1",
+            "joint_type": "rigid",
+            "joint_name": "PathMount",
+        })
+        assert not selected_joint.isError
+        assert "Upper:1+HingeLeaf:1" in selected_joint.content[0].text
         distance = await session.call_tool("measure_distance", {
             "entity_one": "1,2,3", "entity_two": "4,6,3",
         })
