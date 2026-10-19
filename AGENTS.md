@@ -1,5 +1,19 @@
 # AGENTS.md
 
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues for `Q-Bot2021/fusion360-mcp-server`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the canonical triage labels configured in `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context domain docs: root `GLOSSARY.md` and `docs/adr/`. See `docs/agents/domain.md`.
+
 ## Overview
 
 This is an MCP server that connects AI coding agents to Autodesk Fusion 360 for CAD automation. Derive available tools from discovery; retained definitions may be disabled. It consists of two pieces:
@@ -74,6 +88,10 @@ No CLI/environment re-enable switch is allowed. For VS Code devcontainers use
 the Windows-local stdio MCP configuration, not the disabled TCP bridge.
 
 ### Ticket management
+For full tool-audit or assembly-readiness tickets, read
+[the execution plan](plans/fusion-mcp-tool-audit-and-assembly.md) before work;
+it contains the ticket-specific scope and completion checks.
+
 For remote issue updates, authentication handling, checkbox/state changes and
 read-back verification, read
 [Remote issue update and closeout procedure](docs/tickets/remote-issue-updates.md).
