@@ -73,6 +73,42 @@ Both TCP endpoints are numeric IPv4 loopback only. Host inputs accept only
 No CLI/environment re-enable switch is allowed. For VS Code devcontainers use
 the Windows-local stdio MCP configuration, not the disabled TCP bridge.
 
+### Ticket management
+For remote issue updates, authentication handling, checkbox/state changes and
+read-back verification, read
+[Remote issue update and closeout procedure](docs/tickets/remote-issue-updates.md).
+Use its authenticated PowerShell REST method for issue-body/checklist and
+state writes, not the GitHub MCP issue-write tool. Read the procedure again
+immediately before remote writes. A displayed edit form is not an update;
+only fresh remote read-back establishes success. If the documented method
+fails, report the blocker rather than silently switching write methods.
+
+When working through a ticket's tasks
+- Read the ticket
+- Read the ticket breadcrumbs from any predecessor tickets (blocked by)
+- open a new branch under the ticket's name
+- Maintain ticket breadcrumbs in /docs/tickets
+- Complete the ticket tasks
+- Check off each completed task and acceptance criterion in the GitHub issue
+  body as well as in the local ticket breadcrumbs. Local checkboxes do not
+  replace updates to the remote issue; leave unmet criteria unchecked and
+  explain blockers.
+- as each task is completed commit and push the work
+- maintain todo lists in the parent plan
+- Once the complete ticket is complete commit and push the work
+- Once pushed merge back to main 
+- Before closing the issue, post a GitHub resolution comment with the outcome,
+  links to the implementation commit and evidence, validation results (including
+  checks not run and why), and remaining provisional decisions or follow-up
+  tickets.
+- Once merged and the remote checklist and resolution comment are complete,
+  mark the ticket complete. Do not use `Fixes`/`Closes` auto-closing references
+  until those remote updates are in place; use `Refs #<number>` otherwise.
+- Read the issue back from GitHub to verify its checked criteria, resolution
+  comment, and final state. Record the comment URL in the local breadcrumbs.
+  If remote updates fail, report closeout as blocked rather than complete.
+
+
 ## Autodesk API Reference
 
 Use the [API pointer index](docs/fusion-api/README.md) to locate official desktop
