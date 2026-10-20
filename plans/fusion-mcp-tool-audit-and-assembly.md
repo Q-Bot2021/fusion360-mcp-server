@@ -62,6 +62,17 @@ see the [verified resolution comment](https://github.com/Q-Bot2021/fusion360-mcp
 
 **Done when:** Every affected tool has separate protocol and production-live results on the post-restart source revision; backups and live design state are accounted for; only verified ledger statuses change.
 
+**Production acceptance checkpoint:** The [Ticket 02 evidence record](../docs/tickets/issue-2-acceptance.md)
+documents verified staged/backup hashes and targeted post-restart production
+MCP/live passes. The active `MCP_DoorAssembly_20261018` was closed without
+saving; a fresh production open and occurrence listing confirmed that the
+temporary test insertions were discarded. No production acceptance is inferred
+for untested modes.
+
+- [x] Verify staged production files and backup hashes.
+- [x] Restart the production add-in and exercise the targeted production modes.
+- [x] Discard temporary sandbox insertions and verify the saved assembly state.
+
 ## Ticket 03 Design lifecycle and safe document controls
 
 **Scope:** `create_design`, `save_design`, `get_document_state`, `get_design_type`, `set_design_type`, `delete_all`, `undo`, and `ping`.
