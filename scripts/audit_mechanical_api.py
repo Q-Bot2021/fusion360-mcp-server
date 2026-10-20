@@ -5,6 +5,7 @@ import ast
 import csv
 import hashlib
 import html
+import json
 from pathlib import Path
 from string import Template
 
@@ -19,6 +20,103 @@ FIELDS = (
     "live_status",
     "production_eligible",
 )
+MODE_FIELDS = (
+    "tool",
+    "mode",
+    "generic_scope_status",
+    "unit_status",
+    "protocol_status",
+    "development_live_status",
+    "production_live_status",
+    "evidence_revision",
+    "evidence",
+    "blocker",
+)
+MODE_GATE_STATUSES = {"blocked", "failed", "passed", "pending", "stale", "unverified"}
+
+
+def advertised_modes(tools) -> list[tuple[str, str]]:
+    """Return explicit enum and boolean input choices as independent modes."""
+    modes = []
+    for tool in tools:
+        properties = tool.inputSchema.get("properties", {})
+        choices = []
+        for name, schema in properties.items():
+            if "enum" in schema:
+                choices.extend((name, value) for value in schema["enum"])
+            elif schema.get("type") == "boolean":
+                choices.extend((name, value) for value in (False, True))
+        if not choices:
+            modes.append((tool.name, "default"))
+            continue
+        for name, value in choices:
+            encoded = json.dumps(value, ensure_ascii=True, separators=(",", ":"))
+            modes.append((tool.name, f"{name}={encoded}"))
+    return sorted(modes)
+
+
+def initialize_mode_status(repository: Path, output: Path) -> int:
+    """Create an unverified mode baseline without overwriting reviewed results."""
+    if output.exists():
+        raise FileExistsError(f"Refusing to overwrite existing mode ledger: {output}")
+
+    from fusion360_mcp.tools import get_tool_list
+
+    with (repository / "docs/mechanical/generic-tool-audit.tsv").open(
+        encoding="utf-8", newline=""
+    ) as stream:
+        generic = {
+            row["tool"]: row["status"]
+            for row in csv.DictReader(stream, delimiter="\t")
+        }
+    tools = get_tool_list()
+    names = {tool.name for tool in tools}
+    if names != set(generic):
+        raise ValueError("Generic audit does not match the active production registry")
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(
+            stream, fieldnames=MODE_FIELDS, delimiter="\t", lineterminator="\n"
+        )
+        writer.writeheader()
+        for tool_name, mode in advertised_modes(tools):
+            scope_status = generic[tool_name]
+            blocker = (
+                "No mode-specific acceptance evidence bound to a source revision "
+                "is recorded."
+            )
+            if scope_status == "blocked_prerequisite":
+                blocker += (
+                    " The recorded AutoConstrain live blocker is the required "
+                    "eligible Fusion account entitlement."
+                )
+            writer.writerow(
+                {
+                    "tool": tool_name,
+                    "mode": mode,
+                    "generic_scope_status": scope_status,
+                    "unit_status": "unverified",
+                    "protocol_status": "unverified",
+                    "development_live_status": (
+                        "blocked"
+                        if scope_status == "blocked_prerequisite"
+                        else "unverified"
+                    ),
+                    "production_live_status": (
+                        "blocked"
+                        if scope_status == "blocked_prerequisite"
+                        else "unverified"
+                    ),
+                    "evidence_revision": "unrecorded",
+                    "evidence": (
+                        "generic-tool-audit.tsv (scope); tool-status.tsv "
+                        "(aggregate context only)"
+                    ),
+                    "blocker": blocker,
+                }
+            )
+    return len(advertised_modes(tools))
 
 
 def handler_references(source: str, active_names: set[str]) -> dict[str, set[str]]:
@@ -115,9 +213,23 @@ def render_tool_ledger(repository: Path) -> str:
             "protocol_status",
             "live_status",
             "production_live_status",
+            "evidence_revision",
             "reason",
         ],
     )
+    with (directory / "tool-mode-status.tsv").open(
+        encoding="utf-8", newline=""
+    ) as stream:
+        reader = csv.DictReader(stream, delimiter="\t")
+        if reader.fieldnames != list(MODE_FIELDS):
+            raise ValueError("Unexpected ledger columns: tool-mode-status.tsv")
+        modes = list(reader)
+    mode_keys = [(row["tool"], row["mode"]) for row in modes]
+    if (
+        any(not tool or not mode for tool, mode in mode_keys)
+        or len(mode_keys) != len(set(mode_keys))
+    ):
+        raise ValueError("Missing or duplicate tool/mode in tool-mode-status.tsv")
     allowed = {
         "accepted_scope",
         "development_accepted",
@@ -131,6 +243,19 @@ def render_tool_ledger(repository: Path) -> str:
         for row in gates.values()
     ):
         raise ValueError("Unknown registration status")
+    if any(
+        row["generic_scope_status"] not in allowed
+        or any(row[key] not in MODE_GATE_STATUSES for key in MODE_FIELDS[3:7])
+        for row in modes
+    ):
+        raise ValueError("Unknown tool mode status")
+    if any(row["tool"] not in generic for row in modes):
+        raise ValueError("Mode ledger includes a tool missing from the generic audit")
+    if any(
+        row["generic_scope_status"] != generic[row["tool"]]["status"]
+        for row in modes
+    ):
+        raise ValueError("Mode ledger generic scope disagrees with the tool audit")
 
     def indicator(passed, detail):
         css = "pass" if passed else "pending"
@@ -141,6 +266,24 @@ def render_tool_ledger(repository: Path) -> str:
             f'<span class="sr-only">{"Passed" if passed else "Not confirmed"}'
             '</span></span>'
         )
+
+    def evidence_links(value):
+        rendered = []
+        for reference in value.split(";"):
+            reference = reference.strip()
+            token = reference.split(maxsplit=1)[0] if reference else ""
+            if token in {"generic-tool-audit.tsv", "tool-status.tsv"}:
+                target = token
+            elif token.startswith("tests/"):
+                target = f"../../{token.split('::', 1)[0]}"
+            else:
+                rendered.append(html.escape(reference))
+                continue
+            rendered.append(
+                f'<a href="{html.escape(target, quote=True)}">'
+                f"{html.escape(reference)}</a>"
+            )
+        return "<br>".join(rendered)
 
     rows = []
     development_count = 0
@@ -173,12 +316,39 @@ def render_tool_ledger(repository: Path) -> str:
             f'<td>{registration}</td><td class="gate">{indicator(review, status)}'
             f"<small>{html.escape(status.replace('_', ' '))}</small></td>"
             + "".join(cells)
+            + f'<td>{html.escape(gate.get("evidence_revision", "unrecorded"))}</td>'
             + f'<td class="note">{html.escape(note)}</td></tr>'
+        )
+    rendered_modes = []
+    for row in modes:
+        scope = row["generic_scope_status"]
+        rendered_modes.append(
+            f'<tr><th scope="row"><code>{html.escape(row["tool"])}</code></th>'
+            f'<td><code>{html.escape(row["mode"])}</code></td>'
+            f'<td class="gate">{indicator(scope == "accepted_scope", scope)}'
+            f'<small>{html.escape(scope.replace("_", " "))}</small></td>'
+            + "".join(
+                f'<td class="gate">{indicator(row[key] == "passed", row[key])}'
+                f'<small>{html.escape(row[key].replace("_", " "))}</small></td>'
+                for key in (
+                    "unit_status",
+                    "protocol_status",
+                    "development_live_status",
+                    "production_live_status",
+                )
+            )
+            + f'<td>{html.escape(row["evidence_revision"])}</td>'
+            f'<td class="note">{evidence_links(row["evidence"])}<br>'
+            f'{html.escape(row["blocker"])}</td></tr>'
         )
     accepted_count = sum(row["status"] == "accepted_scope" for row in generic.values())
     hashes = " ".join(
         f"{filename}: {hashlib.sha256((directory / filename).read_bytes()).hexdigest()}"
-        for filename in ("generic-tool-audit.tsv", "tool-status.tsv")
+        for filename in (
+            "generic-tool-audit.tsv",
+            "tool-status.tsv",
+            "tool-mode-status.tsv",
+        )
     )
     template = Template(
         (
@@ -191,6 +361,8 @@ def render_tool_ledger(repository: Path) -> str:
         accepted_count=accepted_count,
         development_count=development_count,
         rows="\n".join(rows),
+        mode_count=len(modes),
+        mode_rows="\n".join(rendered_modes),
         hashes=html.escape(hashes),
     )
 
@@ -203,12 +375,23 @@ def main() -> None:
         action="store_true",
         help="Render the tool audit HTML without modifying TSV ledgers",
     )
+    parser.add_argument(
+        "--initialize-mode-status",
+        action="store_true",
+        help="Create a new unverified mode-status ledger without overwriting one",
+    )
     args = parser.parse_args()
     if args.html:
         rendered = render_tool_ledger(Path(__file__).resolve().parents[1])
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(rendered, encoding="utf-8")
         print(f"Rendered audit ledger: {args.output}")
+        return
+    if args.initialize_mode_status:
+        count = initialize_mode_status(
+            Path(__file__).resolve().parents[1], args.output
+        )
+        print(f"Initialized mode-status ledger: {args.output} ({count} modes)")
         return
     print(f"Indexed mechanical/drawing members: {audit(Path.cwd(), args.output)}")
 

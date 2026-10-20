@@ -1,5 +1,14 @@
 # Mechanical and Drawing Coverage
 
+## 103-tool baseline
+
+The issue #1 baseline reconciles all 103 active production tools, the disabled
+`execute_code` definition, and 303 schema-defined modes. See the
+[baseline metadata and limitations](tool-audit-baseline.md), the
+[per-mode evidence matrix](tool-mode-status.tsv), and the generated
+[audit ledger](audit-ledger.html). Historical tool-level results are retained as
+aggregate context; unversioned results are not promoted to mode-level passes.
+
 ## Coverage Inventory
 
 [Open the HTML audit ledger](audit-ledger.html) for tool-by-tool checks, recorded

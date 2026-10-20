@@ -37,6 +37,22 @@ This plan is the shared execution reference for [tickets #1-#31](https://github.
 
 **Done when:** The active registry and audit inventory reconcile exactly; every mode has explicit status and evidence or a named blocker; coverage/freshness checks pass; the generated HTML matches the TSV sources.
 
+**Baseline checklist:**
+
+- [x] Reconcile active discovery, disabled definitions, generic-scope audit,
+  status ledger, and API pointer coverage.
+- [x] Record every enum/boolean schema choice and default tool mode with explicit
+  scope and four evidence-gate statuses.
+- [x] Capture source revision, package/add-in metadata, Fusion/platform version,
+  fixture prerequisites, evidence links, and provenance limitations.
+- [x] Run coverage/freshness, instruction-sync, registry, and focused evidence
+  checks; regenerate the HTML from the TSV ledgers.
+
+**Baseline checkpoint:** See the [issue #1 breadcrumb](../docs/tickets/issue-1-baseline.md)
+and [captured baseline metadata](../docs/mechanical/tool-audit-baseline.md).
+The inventory is complete; unverified mode gates remain visible and are not
+treated as acceptance for the overall audit.
+
 ## Ticket 02 Staged production acceptance
 
 **Scope:** Existing production-staged occurrence-path selection for `create_as_built_joint`, joint-aware suppression, interference behavior, and production-pending `open_design`, `insert_design`, and `list_occurrences`.

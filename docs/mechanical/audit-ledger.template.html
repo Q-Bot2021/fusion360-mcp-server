@@ -69,6 +69,7 @@
       <span class="mark pass" aria-hidden="true">&#10003;</span> Recorded pass.
       <span class="mark pending" aria-hidden="true">&#10007;</span>
       Not confirmed: pending, unrecorded, or ineligible. A cross does not mean a tool is broken.
+      Unrecorded evidence revisions are historical context, not current-source acceptance.
       Generic acceptance applies only to the documented tested scope;
       production registration alone is not acceptance.
     </p>
@@ -94,27 +95,44 @@
       </select></label>
       <output id="count" aria-live="polite"></output>
     </div>
-    <div class="table-wrap"><table>
-      <caption>Tool audit and recorded acceptance gates</caption>
+    <div class="table-wrap"><table id="tool-ledger">
+      <caption>Tool audit and tool-level gate summaries</caption>
       <thead><tr>
         <th scope="col">Tool</th><th scope="col">Registration</th>
         <th scope="col">Generic Scope</th><th scope="col">Unit</th>
         <th scope="col">Protocol</th><th scope="col">Live</th>
-        <th scope="col">Production Live</th><th scope="col">Notes</th>
+        <th scope="col">Production Live</th>
+        <th scope="col">Evidence Revision</th><th scope="col">Notes</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
     <p id="empty" hidden>No matching tools.</p>
+    <details class="table-wrap">
+      <summary>Per-mode evidence matrix (${mode_count} advertised schema modes)</summary>
+      <table>
+        <caption>Individual enum and boolean choices; combinations are not inferred</caption>
+        <thead><tr>
+          <th scope="col">Tool</th><th scope="col">Mode</th>
+          <th scope="col">Generic Scope</th><th scope="col">Unit</th>
+          <th scope="col">Initialized Protocol</th>
+          <th scope="col">Development Live</th>
+          <th scope="col">Production Live</th>
+          <th scope="col">Evidence Revision</th><th scope="col">Evidence / Blocker</th>
+        </tr></thead>
+        <tbody>${mode_rows}</tbody>
+      </table>
+    </details>
   </main>
   <footer>
     <p>Source ledgers: <a href="generic-tool-audit.tsv">generic-tool-audit.tsv</a>
-      and <a href="tool-status.tsv">tool-status.tsv</a>.
+      <a href="tool-status.tsv">tool-status.tsv</a>, and
+      <a href="tool-mode-status.tsv">tool-mode-status.tsv</a>.
       <a href="README.md">Acceptance notes</a>.
       Generated snapshot; missing gate records remain unconfirmed.</p>
     <details><summary>Snapshot source hashes</summary><p>${hashes}</p></details>
   </footer>
   <script>
-    const rows = Array.from(document.querySelectorAll('tbody tr'));
+    const rows = Array.from(document.querySelectorAll('#tool-ledger tbody tr'));
     const query = document.getElementById('query');
     const registration = document.getElementById('registration');
     const status = document.getElementById('status');
