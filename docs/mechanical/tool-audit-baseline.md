@@ -4,6 +4,10 @@ Baseline captured for GitHub issue #1.
 
 Captured on 2026-10-19.
 
+Issue #1 was closed as completed on 2026-10-20. See the
+[resolution comment](https://github.com/Q-Bot2021/fusion360-mcp-server/issues/1#issuecomment-6283429744)
+and [implementation commit](https://github.com/Q-Bot2021/fusion360-mcp-server/commit/2beb5ea8eb6ffd281dea260a0b2f18e38ce0d8a0).
+
 ## Source and environment
 
 - Audited code revision: `00ba5dcfc9d92eb1b135f051eb15f8fc6ad99a5e`, the

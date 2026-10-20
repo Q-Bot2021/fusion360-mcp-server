@@ -51,7 +51,8 @@ This plan is the shared execution reference for [tickets #1-#31](https://github.
 **Baseline checkpoint:** See the [issue #1 breadcrumb](../docs/tickets/issue-1-baseline.md)
 and [captured baseline metadata](../docs/mechanical/tool-audit-baseline.md).
 The inventory is complete; unverified mode gates remain visible and are not
-treated as acceptance for the overall audit.
+treated as acceptance for the overall audit. Issue #1 is closed as completed;
+see the [verified resolution comment](https://github.com/Q-Bot2021/fusion360-mcp-server/issues/1#issuecomment-6283429744).
 
 ## Ticket 02 Staged production acceptance
 

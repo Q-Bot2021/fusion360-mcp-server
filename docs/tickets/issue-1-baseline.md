@@ -9,6 +9,10 @@
 Captured on 2026-10-19 against implementation revision
 `00ba5dcfc9d92eb1b135f051eb15f8fc6ad99a5e`.
 
+**Status:** Closed as completed on 2026-10-20. See the
+[verified resolution comment](https://github.com/Q-Bot2021/fusion360-mcp-server/issues/1#issuecomment-6283429744)
+and [published implementation commit](https://github.com/Q-Bot2021/fusion360-mcp-server/commit/2beb5ea8eb6ffd281dea260a0b2f18e38ce0d8a0).
+
 ## Acceptance checklist
 
 - [x] Reconciled 103 active production tools with the generic audit; recorded the
