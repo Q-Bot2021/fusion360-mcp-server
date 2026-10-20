@@ -9,6 +9,16 @@ The issue #1 baseline reconciles all 103 active production tools, the disabled
 [audit ledger](audit-ledger.html). Historical tool-level results are retained as
 aggregate context; unversioned results are not promoted to mode-level passes.
 
+## Fusion live-test sandbox
+
+`MCP_Dev` is the designated Fusion cloud project sandbox for disposable live-test
+designs and fixtures. Live acceptance may create or mutate only test-owned
+designs in this project; preserve source fixtures unless a test explicitly
+requires a reversible change, and verify the active document identity before
+mutation. Do not use another project or an unrelated active design as a fixture.
+Fixture data-file IDs belong in the local test environment, not committed
+documentation or source.
+
 ## Coverage Inventory
 
 [Open the HTML audit ledger](audit-ledger.html) for tool-by-tool checks, recorded

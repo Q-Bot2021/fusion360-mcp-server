@@ -62,6 +62,8 @@ see the [verified resolution comment](https://github.com/Q-Bot2021/fusion360-mcp
 
 **Done when:** Every affected tool has separate protocol and production-live results on the post-restart source revision; backups and live design state are accounted for; only verified ledger statuses change.
 
+**Preflight checkpoint:** [Ticket 02 evidence and pending prerequisites](../docs/tickets/issue-2-acceptance.md).
+
 ## Ticket 03 Design lifecycle and safe document controls
 
 **Scope:** `create_design`, `save_design`, `get_document_state`, `get_design_type`, `set_design_type`, `delete_all`, `undo`, and `ping`.
