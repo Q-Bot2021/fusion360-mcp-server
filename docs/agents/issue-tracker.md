@@ -7,18 +7,20 @@ remote writes.
 
 ## Read and write
 
-- Use the available GitHub or GitKraken read tools, or authenticated GitHub
-  REST, to read issues and comments.
-- Publish new tickets and native sub-issue relationships to
-  `Q-Bot2021/fusion360-mcp-server` using authenticated GitHub REST and the
-  existing Git credential helper; do not print or persist credentials.
-- For issue-body, checklist, state, and closeout writes, follow [the repository
-  procedure](../tickets/remote-issue-updates.md). Read the current issue
-  immediately before a write and verify the result with a fresh read.
-- Do not use GitHub MCP `issue_write` for issue-body/checklist/state changes; a
-  displayed form is not proof of a write.
-- Post resolution comments using the repository procedure and verify the
-  posted comment and issue association.
+- **Primary:** discover and call the official `github-secondary` MCP tools
+  without user forms for reads, creation, edits, comments, state changes,
+  labels/assignments, and native sub-issues. "Secondary" names the connection,
+  not its priority; use it before other GitHub connections.
+- **Fallback:** authenticated GitHub REST for unavailable MCP operations or
+  recoverable transport/form failures, following [the remote issue
+  procedure](../tickets/remote-issue-updates.md). It owns no-form setup,
+  credential/error handling, reconciliation, and operation-specific tools.
+- Read that procedure before publishing or changing tickets. Send complete
+  parameters, reconcile ambiguous outcomes before retrying or switching paths,
+  and verify every write with fresh remote reads.
+- Use a native sub-issue for parent/child structure and an explicit blocking
+  dependency for ordering; links in a body alone establish neither.
+- Post and read back the resolution comment before closing a completed issue.
 - Pull requests are not a request surface by default.
 
 ## Triage

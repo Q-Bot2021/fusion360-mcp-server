@@ -53,6 +53,10 @@ Fusion API calls run on the main thread through a work queue and CustomEvent bri
 
 ## Development
 
+For GitHub ticket creation, relationships, updates, or closeout, read
+[the issue-tracker guide](../docs/agents/issue-tracker.md). It routes to
+`github-secondary` without user forms first, then authenticated REST fallback.
+
 ```text
 uv sync --dev --python 3.12
 uv run --python 3.12 pytest -v -ra

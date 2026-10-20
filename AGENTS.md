@@ -4,7 +4,8 @@
 
 ### Issue tracker
 
-GitHub Issues for `Q-Bot2021/fusion360-mcp-server`. See `docs/agents/issue-tracker.md`.
+GitHub Issues for `Q-Bot2021/fusion360-mcp-server`. For creation, relationships,
+updates, and closeout, read [the issue-tracker guide](docs/agents/issue-tracker.md).
 
 ### Triage labels
 
@@ -95,11 +96,9 @@ it contains the ticket-specific scope and completion checks.
 For remote issue updates, authentication handling, checkbox/state changes and
 read-back verification, read
 [Remote issue update and closeout procedure](docs/tickets/remote-issue-updates.md).
-Use its authenticated PowerShell REST method for issue-body/checklist and
-state writes, not the GitHub MCP issue-write tool. Read the procedure again
-immediately before remote writes. A displayed edit form is not an update;
-only fresh remote read-back establishes success. If the documented method
-fails, report the blocker rather than silently switching write methods.
+Use the `github-secondary` MCP without user forms as the primary path;
+authenticated REST is the documented fallback. Read the procedure immediately
+before remote writes for no-form setup, fallback gates, and fresh read-back.
 
 When working through a ticket's tasks
 - Read the ticket
