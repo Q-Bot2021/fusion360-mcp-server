@@ -67,7 +67,8 @@ documents verified staged/backup hashes and targeted post-restart production
 MCP/live passes. The active `MCP_DoorAssembly_20261018` was closed without
 saving; a fresh production open and occurrence listing confirmed that the
 temporary test insertions were discarded. No production acceptance is inferred
-for untested modes.
+for untested modes. Issue #2 was closed as completed on 2026-10-20; see the
+[verified resolution comment](https://github.com/Q-Bot2021/fusion360-mcp-server/issues/2#issuecomment-6284250763).
 
 - [x] Verify staged production files and backup hashes.
 - [x] Restart the production add-in and exercise the targeted production modes.

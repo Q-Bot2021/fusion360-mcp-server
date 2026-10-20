@@ -7,6 +7,9 @@
 **Status:** Targeted post-restart production acceptance passed, and sandbox
 cleanup was verified.
 
+**Remote status:** Closed as completed on 2026-10-20. See the [verified
+resolution comment](https://github.com/Q-Bot2021/fusion360-mcp-server/issues/2#issuecomment-6284250763).
+
 ## Preflight
 
 - Repository base revision before Ticket 2 documentation updates:
