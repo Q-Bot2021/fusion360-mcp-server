@@ -4,8 +4,9 @@
 
 **Plan:** [Ticket 02](../../plans/fusion-mcp-tool-audit-and-assembly.md#ticket-02-staged-production-acceptance)
 
-**Status:** In progress. Production hash preflight passed; post-restart
-acceptance is not yet recorded.
+**Status:** Targeted post-restart production acceptance passed. The ticket
+remains open until the active sandbox assembly is closed without saving to
+discard the two temporary test insertions.
 
 ## Preflight
 
@@ -32,20 +33,59 @@ acceptance is not yet recorded.
   sandbox. The live Fusion version is `2705.1.25`; production MCP ping
   responded `pong`.
 - The active saved document was identified as
-  `DoorPanel_Source_20261018` in `MCP_Dev`. No geometry mutation was made.
-  During preflight, a save request was accepted, but document metadata remains
-  pending (`data_file_id` and project name are temporarily unavailable). No
-  retry was issued. Inspect document state before relying on it as a fixture.
+  `DoorPanel_Source_20261018` in `MCP_Dev`. During preflight, a save request
+  was accepted without geometry changes and initially reported pending
+  metadata. No retry was issued; a subsequent `open_design` succeeded and
+  `get_document_state` confirmed the saved identity and project before use.
 
-## Pending acceptance
+## Production acceptance
 
-- Obtain a current identity for the saved `MCP_DoorAssembly_20261018` or
-  `DoorHinge_Subassembly_20261018` fixture. Fusion MCP exposes opening a design
-  by data-file ID but not listing files in a cloud project. The fixture IDs are
-  intentionally not committed.
-- Run initialized production MCP and live assertions for exact nested
-  occurrence-path joint selection, ambiguous-selector no-mutation,
-  suppression/unsuppression, interference, and open/insert/list behavior.
-- Record post-restart source identity, Fusion/platform, test-owned design state,
-  results, and artifacts before changing any audit status.
-- No production acceptance ledger status is promoted by this preflight.
+Tested after the authorized production add-in restart through direct,
+initialized production MCP tool calls against the `MCP_Dev` sandbox. The
+production handler and manifest matched the staged receipt and repository
+source at revision `8577880447e2441a176b40c859ec2e0999cf9d8d`. Fusion was
+`2705.1.25` on Windows x64.
+
+- `suppress_feature` suppressed `DoorAssemblyRevolute`; `unsuppress_feature`
+  restored it. Both calls returned success, with body count, mass, and bounds
+  unchanged. A final unsuppress call confirmed the joint was restored.
+- `check_interference` for `Frame`/`Door` returned zero cross-occurrence
+  collisions. The default query returned only the two previously documented
+  Frame corner overlaps, each approximately 1200 cm3. The
+  `include_coincident_faces=true` mode was not exercised.
+- `open_design` opened the saved `DoorPanel_Source_20261018` and
+  `MCP_DoorAssembly_20261018` designs; `get_document_state` confirmed each
+  saved identity in `MCP_Dev`.
+- `insert_design` inserted two referenced `DoorPanel_Source_20261018`
+  instances under `Door` with `grounded=false`. `list_occurrences` returned
+  the original two root occurrences and both full nested paths:
+  `Door:1+DoorPanel_Source_20261018:1` and
+  `Door:1+DoorPanel_Source_20261018:2`.
+- `create_as_built_joint` rejected the repeated component-name selector with
+  “missing or ambiguous; use its full occurrence path.” The subsequent
+  `get_scene_info` and `list_occurrences` matched pre-error body/timeline
+  counts and occurrence paths. Supplying both full nested paths created the
+  rigid joint and returned those exact paths. `undo` returned success; the
+  post-undo timeline count matched the pre-joint count. The production tool
+  set does not expose a joint-list query, so joint inventory was not
+  independently read back.
+- Only the exercised modes are promoted in the ledgers. Other joint types,
+  insertion flag combinations, and coincident-face handling remain
+  unverified.
+
+## Sandbox cleanup state
+
+The two referenced test occurrences remain in the active in-memory assembly.
+No explicit save was issued after insertion. The production MCP has no
+single-occurrence delete tool; `undo` did not remove these references, so the
+assembly was not saved. Close the active assembly without saving in Fusion to
+discard the temporary references. The joint was restored unsuppressed. This
+remaining UI cleanup is recorded rather than risking deletion of the fixture
+or unrelated assembly contents.
+
+## Remaining limits
+
+- This is targeted production acceptance for Ticket 02, not blanket acceptance
+  of every advertised mode for these tools.
+- Close the active assembly without saving to discard the temporary inserts
+  before any unrelated work uses the fixture.
