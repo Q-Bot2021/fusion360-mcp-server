@@ -4,13 +4,13 @@
 
 **Plan:** [Ticket 02](../../plans/fusion-mcp-tool-audit-and-assembly.md#ticket-02-staged-production-acceptance)
 
-**Status:** Targeted post-restart production acceptance passed. The ticket
-remains open until the active sandbox assembly is closed without saving to
-discard the two temporary test insertions.
+**Status:** Targeted post-restart production acceptance passed, and sandbox
+cleanup was verified.
 
 ## Preflight
 
-- Repository source revision: `5187b107f690f1c99f02c482a0e3fc5f4e06ab1d`.
+- Repository base revision before Ticket 2 documentation updates:
+  `5187b107f690f1c99f02c482a0e3fc5f4e06ab1d`.
 - Stage receipt:
   `.pytest_cache/production-joint-stage-20261019_005534.json`
   (`staged_restart_required`).
@@ -75,17 +75,14 @@ source at revision `8577880447e2441a176b40c859ec2e0999cf9d8d`. Fusion was
 
 ## Sandbox cleanup state
 
-The two referenced test occurrences remain in the active in-memory assembly.
-No explicit save was issued after insertion. The production MCP has no
-single-occurrence delete tool; `undo` did not remove these references, so the
-assembly was not saved. Close the active assembly without saving in Fusion to
-discard the temporary references. The joint was restored unsuppressed. This
-remaining UI cleanup is recorded rather than risking deletion of the fixture
-or unrelated assembly contents.
+The production MCP has no single-occurrence delete tool, and `undo` did not
+remove the two test references. No explicit save was issued after insertion.
+The user closed `MCP_DoorAssembly_20261018` without saving; reopening it through
+production MCP and listing occurrences returned only the original `Frame:1`
+and `Door:1` paths. The saved sandbox fixture is restored; the joint remains
+unsuppressed.
 
 ## Remaining limits
 
 - This is targeted production acceptance for Ticket 02, not blanket acceptance
   of every advertised mode for these tools.
-- Close the active assembly without saving to discard the temporary inserts
-  before any unrelated work uses the fixture.

@@ -64,14 +64,14 @@ see the [verified resolution comment](https://github.com/Q-Bot2021/fusion360-mcp
 
 **Production acceptance checkpoint:** The [Ticket 02 evidence record](../docs/tickets/issue-2-acceptance.md)
 documents verified staged/backup hashes and targeted post-restart production
-MCP/live passes. Close the active `MCP_DoorAssembly_20261018` in Fusion without
-saving to discard temporary test insertions before reusing that fixture; no
-production acceptance is inferred for untested modes.
+MCP/live passes. The active `MCP_DoorAssembly_20261018` was closed without
+saving; a fresh production open and occurrence listing confirmed that the
+temporary test insertions were discarded. No production acceptance is inferred
+for untested modes.
 
 - [x] Verify staged production files and backup hashes.
 - [x] Restart the production add-in and exercise the targeted production modes.
-- [ ] Close the active sandbox assembly without saving to discard the temporary
-  test insertions.
+- [x] Discard temporary sandbox insertions and verify the saved assembly state.
 
 ## Ticket 03 Design lifecycle and safe document controls
 
