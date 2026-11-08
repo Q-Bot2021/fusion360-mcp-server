@@ -2,8 +2,9 @@
 
 **Issue:** [#32](https://github.com/Q-Bot2021/fusion360-mcp-server/issues/32)  
 **Breadcrumb:** [execution record](../docs/tickets/issue-32-parametric-bottle-dispenser.md)  
-**Status:** Workflow migration verified locally; publication in progress.
-Infrastructure implementation and CAD remain pending.
+**Status:** Workflow migration published. Parameter-inspection/expression-edit
+candidates passed unit, initialized protocol and development-live checks.
+Production promotion, remaining geometry/pattern support and CAD are pending.
 
 ## Confirmed requirements and ownership
 
@@ -65,7 +66,7 @@ Before selecting geometry, resolve:
 ### 1. Tracking and workflow migration
 
 - [x] Migrate only missing SCUBA_Torch workflow behavior, preserving Fusion gates.
-- [ ] Verify the new issue and branch; publish this plan and breadcrumbs.
+- [x] Verify the new issue and branch; publish this plan and breadcrumbs.
 - [x] Run existing instruction/documentation checks; preserve unrelated edits.
 
 Done when published local/remote records identify scope, decisions, branch,
@@ -84,6 +85,14 @@ creation/update and readback for user/model parameters, origin-anchored driving
 sketch dimensions, expression-backed offsets/extrusions, and feature patterns
 whose quantity and spacing are native parameter expressions. Body patterns
 must not leave disconnected bodies in the final result.
+
+First implemented slice: development-only `get_design_parameters` and
+`set_parameter_expression`. Inspect native user/model parameter names and
+expressions, then edit one explicitly inspected expression by document ID.
+This can bind existing numeric sketch/plane/feature dimensions to native
+expressions without proliferating expression fields across every tool.
+Pattern-feature creation and origin constraints remain separate work; the
+parameter primitives alone do not establish a four-input dispenser.
 
 Done when the API/geometry choices meet all four inputs, including topology
 changes, and known unsupported inputs have explicit outcomes before mutation.

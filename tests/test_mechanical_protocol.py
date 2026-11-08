@@ -20,6 +20,66 @@ queries = test_mechanical_queries.queries
 design = test_mechanical_queries.design
 
 
+@pytest.mark.protocol_e2e
+def test_driving_parameter_candidates_through_initialized_mcp(queries, monkeypatch):
+    from types import SimpleNamespace
+
+    import fusion360_mcp.server as server
+
+    parameter = SimpleNamespace(
+        name="ShelfPitch", expression="60 mm", unit="mm", value=6.0,
+        valueType=0, objectType="adsk::fusion::UserParameter",
+    )
+    handler = SimpleNamespace(
+        app=SimpleNamespace(activeDocument=SimpleNamespace(
+            isValid=True, creationId="parameter-protocol",
+        )),
+        _design=lambda: SimpleNamespace(
+            allParameters=test_mechanical_queries.Collection([parameter]),
+            unitsManager=SimpleNamespace(
+                isValidExpression=lambda expression, unit: True,
+            ),
+        ),
+    )
+
+    def send(mode, name, params, **kwargs):
+        return getattr(queries, name)(handler, **params)
+
+    monkeypatch.setattr(server, "_send", send)
+
+    async def check():
+        app = build_server(
+            "socket", tool_list=development_list,
+            tool_lookup=development_lookup, structured_results=True,
+        )
+        async with create_connected_server_and_client_session(app) as session:
+            names = {tool.name for tool in (await session.list_tools()).tools}
+            assert {"get_design_parameters", "set_parameter_expression"} <= names
+            inspected = await session.call_tool(
+                "get_design_parameters", {"document_id": "parameter-protocol"},
+            )
+            assert not inspected.isError
+            assert inspected.structuredContent["parameters"][0]["value_internal"] == 6.0
+            updated = await session.call_tool("set_parameter_expression", {
+                "document_id": "parameter-protocol", "name": "ShelfPitch",
+                "expected_expression": "60 mm", "expression": "BottleDiameter + 2 mm",
+            })
+            assert not updated.isError
+            assert updated.structuredContent["parameter"]["expression"] == (
+                "BottleDiameter + 2 mm"
+            )
+            invalid = await session.call_tool("set_parameter_expression", {
+                "document_id": "parameter-protocol", "name": "ShelfPitch",
+                "expression": "100 mm",
+            })
+            assert invalid.isError
+            assert parameter.expression == "BottleDiameter + 2 mm"
+        assert get_tool_by_name("get_design_parameters") is None
+        assert get_tool_by_name("set_parameter_expression") is None
+
+    anyio.run(check)
+
+
 def test_save_diagnostic_candidate_protocol(queries, monkeypatch):
     from types import SimpleNamespace
 

@@ -6,6 +6,124 @@ import os
 import tempfile
 
 
+def _parameter_design(handler, document_id):
+    document = handler.app.activeDocument
+    if (
+        not isinstance(document_id, str)
+        or not document_id.strip()
+        or document is None
+        or not document.isValid
+        or document.creationId != document_id
+    ):
+        raise ValueError("Inspect the active document before querying its parameters")
+    return handler._design()
+
+
+def _parameter_record(parameter):
+    value_type = int(parameter.valueType)
+    row = {
+        "name": parameter.name,
+        "expression": parameter.expression,
+        "unit": parameter.unit,
+        "object_type": parameter.objectType,
+        "value_type": value_type,
+    }
+    if value_type == 0:
+        row["value_internal"] = parameter.value
+    elif value_type == 1:
+        row["text_value"] = parameter.textValue
+    else:
+        raise ValueError(f"Unsupported parameter value type: {value_type}")
+    if parameter.objectType == "adsk::fusion::ModelParameter":
+        creator = parameter.createdBy
+        creator_component = getattr(creator, "parentComponent", None)
+        if creator_component is None:
+            creator_component = getattr(creator, "component", None)
+        row.update(
+            component_name=parameter.component.name,
+            role=parameter.role,
+            created_by_type=creator.objectType,
+            created_by_name=getattr(creator, "name", None),
+            created_by_component_name=(
+                creator_component.name if creator_component is not None else None
+            ),
+        )
+    return row
+
+
+def get_design_parameters(
+    handler, document_id: str, offset: int = 0, limit: int = 100,
+) -> dict:
+    if (
+        type(offset) is not int
+        or type(limit) is not int
+        or offset < 0
+        or not 1 <= limit <= 200
+    ):
+        raise ValueError("Invalid parameter query pagination")
+    parameters = _parameter_design(handler, document_id).allParameters
+    rows = [
+        _parameter_record(parameters.item(index))
+        for index in range(offset, min(offset + limit, parameters.count))
+    ]
+    return {
+        "ok": True,
+        "development_only": True,
+        "document_id": document_id,
+        "total": parameters.count,
+        "offset": offset,
+        "parameters": rows,
+        "next_offset": offset + len(rows)
+        if offset + len(rows) < parameters.count else None,
+    }
+
+
+def set_parameter_expression(
+    handler, document_id: str, name: str, expression: str,
+    expected_expression: str,
+) -> dict:
+    if (
+        not isinstance(name, str)
+        or not name.strip()
+        or not isinstance(expression, str)
+        or not expression.strip()
+        or not isinstance(expected_expression, str)
+        or not expected_expression.strip()
+    ):
+        raise ValueError("Supply a parameter name, expression and inspected expression")
+    design = _parameter_design(handler, document_id)
+    parameters = design.allParameters
+    matches = [
+        parameters.item(index)
+        for index in range(parameters.count)
+        if parameters.item(index).name == name
+    ]
+    if len(matches) != 1:
+        raise ValueError("Parameter name must identify exactly one design parameter")
+    parameter = matches[0]
+    if (
+        parameter.objectType not in {
+            "adsk::fusion::UserParameter", "adsk::fusion::ModelParameter",
+        }
+        or int(parameter.valueType) != 0
+    ):
+        raise ValueError("Only local numeric user/model parameter edits are supported")
+    if parameter.expression != expected_expression:
+        raise ValueError(
+            "Parameter expression changed; inspect it again before editing"
+        )
+    if not design.unitsManager.isValidExpression(expression, parameter.unit):
+        raise ValueError("Expression is invalid for the parameter's units")
+    parameter.expression = expression
+    return {
+        "ok": True,
+        "development_only": True,
+        "document_id": document_id,
+        "updated": True,
+        "parameter": _parameter_record(parameter),
+    }
+
+
 def feature_health(
     design, component_name: str = "", offset: int = 0, limit: int = 100
 ) -> dict:

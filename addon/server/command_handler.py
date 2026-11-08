@@ -46,6 +46,9 @@ ASSEMBLY_CANDIDATES = frozenset(
         "animate_joint",
     }
 )
+PARAMETER_CANDIDATES = frozenset(
+    {"get_design_parameters", "set_parameter_expression"}
+)
 
 
 class CommandHandler:
@@ -126,6 +129,7 @@ class CommandHandler:
             "undo",
             # parametric & agent-authored changes
             "set_parameter",
+            "set_parameter_expression",
             "execute_code",
             # sketch constraint mutation
             "auto_constrain",
@@ -277,7 +281,7 @@ class CommandHandler:
         if (
             handler is None
             and _DEVELOPMENT_RUNTIME
-            and cmd_type in ASSEMBLY_CANDIDATES
+            and cmd_type in ASSEMBLY_CANDIDATES | PARAMETER_CANDIDATES
         ):
             handler = self._assembly_candidate(cmd_type)
         if handler is None:

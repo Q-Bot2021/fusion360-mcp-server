@@ -59,6 +59,7 @@ _MUTATION_MOCKS: frozenset[str] = frozenset(
         "undo",
         "insert_design",
         "set_parameter",
+        "set_parameter_expression",
         "execute_code",
         "auto_constrain",
         "create_ucs",

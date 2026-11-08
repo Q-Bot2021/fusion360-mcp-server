@@ -25,6 +25,7 @@ from fusion360_mcp.tools import (
 from tests.development_mcp import (
     ASSEMBLY_CANDIDATES,
     DOCUMENT_CANDIDATES,
+    PARAMETER_CANDIDATES,
     STENCIL_CANDIDATES,
     development_list,
     development_lookup,
@@ -48,7 +49,10 @@ def test_cad_development_discovery_stays_separate():
         "get_drawing_info",
     } | {
         definition["name"] for definition in (*DOCUMENT_CANDIDATES, *STENCIL_CANDIDATES)
-    } | {definition["name"] for definition in ASSEMBLY_CANDIDATES}
+    } | {
+        definition["name"]
+        for definition in (*ASSEMBLY_CANDIDATES, *PARAMETER_CANDIDATES)
+    }
     promoted_assembly_tools = {
         definition["name"]
         for definition in ASSEMBLY_CANDIDATES

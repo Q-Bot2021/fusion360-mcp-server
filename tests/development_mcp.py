@@ -379,6 +379,64 @@ _PAGINATION = {
         "limit": {"type": "integer", "minimum": 1, "maximum": 200},
     },
 }
+PARAMETER_CANDIDATES = (
+    {
+        "name": "get_design_parameters",
+        "title": "Development: Inspect Driving Parameters",
+        "description": (
+            "Read paginated user/model parameters across local components in "
+            "the inspected active design, including expressions, internal "
+            "numeric values (cm/radians), model roles and owning components. "
+            "Externally referenced designs are excluded by Fusion. Requires "
+            "the September 2025 parameter value-type API. " + DIRECT_TOOL_CALLS
+        ),
+        "inputSchema": {
+            **_PAGINATION,
+            "required": ["document_id"],
+            "properties": {
+                **_PAGINATION["properties"],
+                "document_id": {"type": "string", "minLength": 1},
+            },
+        },
+        "annotations": _annotations(True),
+    },
+    {
+        "name": "set_parameter_expression",
+        "title": "Development: Edit Driving Parameter Expression",
+        "description": (
+            "Set one uniquely named local numeric user/model parameter's "
+            "Fusion expression in the inspected active design. Require its "
+            "exact inspected expression to reject stale edits; validate "
+            "against the parameter's declared units and return actual "
+            "parameter readback. Use explicit units in literal expressions. "
+            "Text/derived parameters are unsupported. Inspect feature health "
+            "and geometry after each edit; expression validity is not proof "
+            "of geometric validity. " + DIRECT_TOOL_CALLS
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "document_id", "name", "expression", "expected_expression",
+            ],
+            "properties": {
+                "document_id": {"type": "string", "minLength": 1},
+                "name": {"type": "string", "minLength": 1, "maxLength": 100},
+                "expression": {
+                    "type": "string", "minLength": 1, "maxLength": 1000,
+                },
+                "expected_expression": {
+                    "type": "string", "minLength": 1, "maxLength": 1000,
+                },
+            },
+        },
+        "annotations": {
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": False,
+        },
+    },
+)
 _VECTOR = {
     "type": "array",
     "minItems": 3,
@@ -676,6 +734,7 @@ def development_lookup(name: str) -> dict | None:
         *DOCUMENT_CANDIDATES,
         *STENCIL_CANDIDATES,
         *ASSEMBLY_CANDIDATES,
+        *PARAMETER_CANDIDATES,
     ):
         if name == definition["name"]:
             return get_tool_by_name(name) or definition
@@ -696,6 +755,7 @@ def development_list() -> list[types.Tool]:
                 *DOCUMENT_CANDIDATES,
                 *STENCIL_CANDIDATES,
                 *ASSEMBLY_CANDIDATES,
+                *PARAMETER_CANDIDATES,
             )
             if get_tool_by_name(definition["name"]) is None
         ),
