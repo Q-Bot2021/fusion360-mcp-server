@@ -89,41 +89,82 @@ No CLI/environment re-enable switch is allowed. For VS Code devcontainers use
 the Windows-local stdio MCP configuration, not the disabled TCP bridge.
 
 ### Ticket management
-For full tool-audit or assembly-readiness tickets, read
-[the execution plan](plans/fusion-mcp-tool-audit-and-assembly.md) before work;
-it contains the ticket-specific scope and completion checks.
+For every ticket-execution request, complete these steps in order:
 
-For remote issue updates, authentication handling, checkbox/state changes and
-read-back verification, read
-[Remote issue update and closeout procedure](docs/tickets/remote-issue-updates.md).
-Use the `github-secondary` MCP without user forms as the primary path;
-authenticated REST is the documented fallback. Read the procedure immediately
-before remote writes for no-form setup, fallback gates, and fresh read-back.
+1. **Establish scope.** Read the issue and comments, parent, blockers,
+   dependents, acceptance criteria, existing branch, and local breadcrumbs,
+   including blocking predecessors. Confirm native GitHub relationships;
+   a related-issue link alone is neither a parent nor a blocker. Continue the
+   existing ticket branch when available; otherwise follow
+   [Branch management](#branch-management). Preserve unrelated worktree edits.
+2. **Trace evidence.** Read linked requirements, plans, architecture records,
+   source designs and verification evidence until each criterion is supported
+   by current evidence or recorded as unresolved. Fusion online designs own
+   native CAD; exports and dashboards are evidence, not replacement sources.
+   For full tool-audit or assembly-readiness tickets, read
+   [the audit execution plan](plans/fusion-mcp-tool-audit-and-assembly.md).
+   For four-input parametric modeling and the bottle dispenser, read
+   [the Ticket 32 plan](plans/four-input-parametric-bottle-dispenser.md).
+3. **Resolve uncertainty.** Use `/research` for evidence-based questions and
+   record findings in the owning project. Ask the user before implementing
+   material ambiguity that sources and established physics do not resolve.
+   Keep assumptions explicit and separate from approved requirements.
+4. **Implement and verify.** Complete agreed tasks without weakening criteria.
+   Apply the unit, protocol, live-Fusion, generic-applicability and production
+   promotion gates in [dev_rules.md](dev_rules.md). Record exact-revision
+   results, including checks not run and why. Commit and push coherent,
+   verified slices on the ticket branch; keep the parent plan current.
+5. **Maintain records and remote status.** Use `/writing-for-agents` for
+   agent-facing documentation. Update applicable ticket breadcrumbs in
+   `docs/tickets/`, normative requirements, plans, architecture/domain records,
+   affected READMEs and visual sources. Update the audit TSV sources and
+   regenerate `docs/mechanical/audit-ledger.html` as required above; use the
+   project's existing status surfaces rather than inventing another dashboard.
+   Update each completed GitHub task/criterion as well as its local checkbox.
+   Leave unmet criteria unchecked and explain blockers.
 
-When working through a ticket's tasks
-- Read the ticket
-- Read the ticket breadcrumbs from any predecessor tickets (blocked by)
-- open a new branch under the ticket's name
-- Maintain ticket breadcrumbs in /docs/tickets
-- Complete the ticket tasks
-- Check off each completed task and acceptance criterion in the GitHub issue
-  body as well as in the local ticket breadcrumbs. Local checkboxes do not
-  replace updates to the remote issue; leave unmet criteria unchecked and
-  explain blockers.
-- as each task is completed commit and push the work
-- maintain todo lists in the parent plan
-- Once the complete ticket is complete commit and push the work
-- Once pushed merge back to main 
-- Before closing the issue, post a GitHub resolution comment with the outcome,
-  links to the implementation commit and evidence, validation results (including
-  checks not run and why), and remaining provisional decisions or follow-up
-  tickets.
-- Once merged and the remote checklist and resolution comment are complete,
-  mark the ticket complete. Do not use `Fixes`/`Closes` auto-closing references
-  until those remote updates are in place; use `Refs #<number>` otherwise.
-- Read the issue back from GitHub to verify its checked criteria, resolution
-  comment, and final state. Record the comment URL in the local breadcrumbs.
-  If remote updates fail, report closeout as blocked rather than complete.
+   Immediately before **every GitHub issue write**, including creation,
+   relationships, checklist edits, comments and state changes, read
+   [the remote issue procedure](docs/tickets/remote-issue-updates.md).
+   Use `github-secondary` without forms first and authenticated REST only as
+   its documented fallback. Verify each write with a fresh remote read.
+   Keep comments concise with exact evidence links; notify dependents only
+   when the result changes information they need.
+6. **Review and accept.** Summarize outcomes, evidence, validation and remaining
+   gaps in chat when agreed tasks are complete or explicitly blocked.
+   Wait for the user's acceptance or requested adjustments before merging.
+   Acceptance of a partial milestone leaves unmet ticket criteria open.
+7. **Close out.** After acceptance, merge and push to `main`, verify that remote
+   `main` contains the implementation, and publish/read back the completed
+   checklist and resolution comment. Include outcome, implementation/evidence
+   links, validation (including checks not run and why), provisional decisions
+   and follow-up tickets. Close only when criteria and remote/local records
+   agree. Read back the final state and record the resolution-comment URL in
+   breadcrumbs and applicable plan/status records. Failed remote updates
+   block closeout. Use `Refs #<number>` until the remote checklist and
+   resolution comment are complete; use `Fixes`/`Closes` only afterward.
+
+### Branch management
+
+Check branch names before creating or switching branches. For a user-requested
+nonconforming name, propose a conforming name and obtain their choice first.
+When resuming a user-created nonconforming branch, preserve its name/work,
+explain the mismatch and obtain approval before renaming.
+
+- Ticket work: `tickets/{scope}/{category}/ticket_{number}`, using the narrowest
+  owning capability/domain, lowercase hyphenated scope and the GitHub issue
+  number padded to at least two digits. Add `-{workstream}` only to distinguish
+  multiple branches for one ticket. Use `product` for cross-domain work.
+- Categories: `SE` for requirements/architecture/verification definitions,
+  `Design` for design definition, and `Implementation` for executable code or
+  native CAD. Choose the category of the primary deliverable.
+- Plan-only work without a ticket: `plans/{topic}`; maintenance:
+  `maintenance/{topic}`; research for later implementation: `research/{topic}`.
+  Research needed for an active ticket can stay on its ticket branch.
+
+Durable plans belong in `plans/` and must be linked from this guide and the
+owning ticket breadcrumbs. Keep their task/status lists synchronized with
+published evidence; a new ticket does not require editing an unrelated plan.
 
 
 ## Autodesk API Reference
