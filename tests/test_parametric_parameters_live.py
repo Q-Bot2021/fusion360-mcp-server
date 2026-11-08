@@ -132,6 +132,24 @@ def test_parameter_expression_regenerates_local_components_live():
                                     "expression": previous,
                                 },
                             )
+                        await call(
+                            "create_parameter",
+                            {
+                                "name": "DoubleCount",
+                                "value": 1,
+                                "unit": "",
+                            },
+                        )
+                        derived = await call(
+                            "set_parameter_expression",
+                            {
+                                "document_id": identity,
+                                "name": "DoubleCount",
+                                "expected_expression": "1",
+                                "expression": "Count * 2",
+                            },
+                        )
+                        assert derived["parameter"]["value_internal"] == 6
                         if component_name:
                             await call("create_component", {"name": component_name})
                         arguments = {

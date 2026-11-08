@@ -112,7 +112,13 @@ def set_parameter_expression(
         raise ValueError(
             "Parameter expression changed; inspect it again before editing"
         )
-    if not design.unitsManager.isValidExpression(expression, parameter.unit):
+    validation_expression = (
+        expression if parameter.unit else f"({expression}) * 1 cm"
+    )
+    validation_unit = parameter.unit or "cm"
+    if not design.unitsManager.isValidExpression(
+        validation_expression, validation_unit,
+    ):
         raise ValueError("Expression is invalid for the parameter's units")
     parameter.expression = expression
     return {
@@ -121,6 +127,200 @@ def set_parameter_expression(
         "document_id": document_id,
         "updated": True,
         "parameter": _parameter_record(parameter),
+    }
+
+
+def draw_parametric_convex_profile(
+    handler, document_id: str, sketch_name: str, vertices: list,
+    component_name: str = None, reference_x: float = -1.0,
+    reference_y: float = -1.0, module_loader=importlib.import_module,
+) -> dict:
+    design = _parameter_design(handler, document_id)
+    if (
+        not isinstance(vertices, list)
+        or not 3 <= len(vertices) <= 32
+        or type(reference_x) not in (int, float)
+        or type(reference_y) not in (int, float)
+        or not math.isfinite(reference_x)
+        or not math.isfinite(reference_y)
+    ):
+        raise ValueError("Supply 3-32 convex vertices and finite reference coordinates")
+    sketch = handler._sketch_by_name(sketch_name, component_name)
+    if sketch.sketchCurves.count:
+        raise ValueError("Constrained profile requires an empty named sketch")
+    manager = design.unitsManager
+    positions = []
+    for vertex in vertices:
+        if not isinstance(vertex, dict) or set(vertex) != {"x", "y"}:
+            raise ValueError("Each vertex must contain x and y expressions")
+        position = []
+        for axis, reference in (("x", reference_x), ("y", reference_y)):
+            expression = vertex[axis]
+            if (
+                not isinstance(expression, str)
+                or not expression.strip()
+                or not manager.isValidExpression(expression, "cm")
+            ):
+                raise ValueError("Vertex coordinate must be a valid length expression")
+            value = manager.evaluateExpression(expression, "cm")
+            if not math.isfinite(value) or value <= reference:
+                raise ValueError(
+                    "Vertices must remain above their fixed reference axes"
+                )
+            position.append(value)
+        positions.append(position)
+    signs = []
+    for index, point in enumerate(positions):
+        following = positions[(index + 1) % len(positions)]
+        if math.dist(point, following) <= 1e-7:
+            raise ValueError("Profile contains duplicate or zero-length edges")
+        for other_index, other in enumerate(positions):
+            if other_index in {index, (index + 1) % len(positions)}:
+                continue
+            cross = (
+                (following[0] - point[0]) * (other[1] - point[1])
+                - (following[1] - point[1]) * (other[0] - point[0])
+            )
+            if abs(cross) <= 1e-10:
+                raise ValueError(
+                    "Profile must be strictly convex without collinear edges"
+                )
+            signs.append(cross > 0)
+    if not all(sign == signs[0] for sign in signs):
+        raise ValueError("Profile must be convex and non-self-intersecting")
+    core = module_loader("adsk.core")
+    fusion = module_loader("adsk.fusion")
+    reference = sketch.sketchPoints.add(
+        core.Point3D.create(reference_x, reference_y, 0)
+    )
+    if reference is None:
+        raise RuntimeError("Fusion did not create the profile reference point")
+    reference.isFixed = True
+    if not reference.isFixed:
+        raise RuntimeError("Fusion did not fix the profile reference point")
+    # Seed off-origin and constrain points before edges to avoid inferred constraints.
+    shift_x = 1.0 - min(0.0, min(point[0] for point in positions))
+    shift_y = 1.0 - min(0.0, min(point[1] for point in positions))
+    points = [
+        sketch.sketchPoints.add(
+            core.Point3D.create(position[0] + shift_x, position[1] + shift_y, 0)
+        )
+        for position in positions
+    ]
+    if any(point is None for point in points):
+        raise RuntimeError("Fusion did not create a profile vertex")
+    dimension_names = []
+    orientations = (
+        fusion.DimensionOrientations.HorizontalDimensionOrientation,
+        fusion.DimensionOrientations.VerticalDimensionOrientation,
+    )
+    for vertex, point in zip(vertices, points):
+        for axis, coordinate, orientation in zip(
+            ("x", "y"), (reference_x, reference_y), orientations,
+        ):
+            dimension = sketch.sketchDimensions.addDistanceDimension(
+                reference, point, orientation, point.geometry,
+            )
+            if dimension is None:
+                raise RuntimeError(
+                    "Fusion did not create a driving coordinate dimension"
+                )
+            dimension.parameter.expression = f"({vertex[axis]}) - ({coordinate} cm)"
+            dimension_names.append(dimension.parameter.name)
+    for index, point in enumerate(points):
+        line = sketch.sketchCurves.sketchLines.addByTwoPoints(
+            point, points[(index + 1) % len(points)]
+        )
+        if line is None:
+            raise RuntimeError("Fusion did not create a profile edge")
+    if sketch.profiles.count != 1 or not sketch.isFullyConstrained:
+        raise RuntimeError("Fusion profile is not one fully constrained closed region")
+    return {
+        "ok": True, "development_only": True, "sketch_name": sketch.name,
+        "vertex_count": len(points), "dimension_names": dimension_names,
+        "is_fully_constrained": sketch.isFullyConstrained,
+        "reference": [reference_x, reference_y],
+    }
+
+
+def pattern_features(
+    handler, document_id: str, feature_names: list, axis: str,
+    quantity: str, spacing: str, feature_name: str,
+    component_name: str = None, module_loader=importlib.import_module,
+) -> dict:
+    design = _parameter_design(handler, document_id)
+    if (
+        not isinstance(feature_names, list)
+        or not 1 <= len(feature_names) <= 32
+        or any(not isinstance(name, str) or not name.strip() for name in feature_names)
+        or len(set(feature_names)) != len(feature_names)
+        or axis not in {"x", "y", "z"}
+        or not isinstance(feature_name, str)
+        or not feature_name.strip()
+        or not isinstance(quantity, str)
+        or not quantity.strip()
+    ):
+        raise ValueError(
+            "Supply unique seed feature names, a local axis and pattern name"
+        )
+    manager = design.unitsManager
+    # Empty validation units select document length units, not dimensionless units.
+    quantity_check = f"({quantity}) * 1 cm"
+    for expression, unit in ((quantity_check, "cm"), (spacing, "cm")):
+        if (
+            not isinstance(expression, str)
+            or not expression.strip()
+            or not manager.isValidExpression(expression, unit)
+        ):
+            raise ValueError("Pattern quantity/spacing expressions have invalid units")
+    count = manager.evaluateExpression(quantity_check, "cm")
+    distance = manager.evaluateExpression(spacing, "cm")
+    if (
+        not math.isfinite(count)
+        or count < 1
+        or count > 1000
+        or count != int(count)
+        or not math.isfinite(distance)
+        or distance == 0
+    ):
+        raise ValueError("Pattern requires integer quantity 1-1000 and nonzero spacing")
+    component = (
+        handler._component_by_name(component_name)
+        if component_name else design.rootComponent
+    )
+    features = component.features
+    available = [features.item(index) for index in range(features.count)]
+    if any(feature.name == feature_name for feature in available):
+        raise ValueError("Pattern feature name already exists in the component")
+    seeds = []
+    for name in feature_names:
+        matches = [feature for feature in available if feature.name == name]
+        if len(matches) != 1 or not matches[0].isValid or matches[0].isSuppressed:
+            raise ValueError("Seed must identify one valid unsuppressed local feature")
+        seeds.append(matches[0])
+    core = module_loader("adsk.core")
+    fusion = module_loader("adsk.fusion")
+    entities = core.ObjectCollection.create()
+    for seed in seeds:
+        entities.add(seed)
+    patterns = component.features.rectangularPatternFeatures
+    request = patterns.createInput(
+        entities, getattr(component, f"{axis}ConstructionAxis"),
+        core.ValueInput.createByString(quantity),
+        core.ValueInput.createByString(spacing),
+        fusion.PatternDistanceType.SpacingPatternDistanceType,
+    )
+    if request is None:
+        raise RuntimeError("Fusion did not create the pattern input")
+    feature = patterns.add(request)
+    if feature is None:
+        raise RuntimeError("Fusion did not create the feature pattern")
+    feature.name = feature_name
+    return {
+        "ok": True, "development_only": True, "feature_name": feature.name,
+        "component_name": component.name, "seed_features": feature_names,
+        "axis": axis, "quantity": quantity, "spacing": spacing,
+        "health_state": int(feature.healthState),
     }
 
 

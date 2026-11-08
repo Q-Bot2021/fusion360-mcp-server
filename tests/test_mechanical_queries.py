@@ -139,6 +139,28 @@ def test_parameter_expression_sets_one_inspected_model_parameter(queries):
     assert result["parameter"]["component_name"] == "NestedShelf"
 
 
+def test_unitless_expression_references_preserve_dimensionless_validation(queries):
+    parameter = SimpleNamespace(
+        name="Capacity", expression="4", unit="", value=4,
+        valueType=0, objectType="adsk::fusion::UserParameter",
+    )
+    handler = SimpleNamespace(
+        app=SimpleNamespace(activeDocument=SimpleNamespace(
+            isValid=True, creationId="parameter-test",
+        )),
+        _design=lambda: SimpleNamespace(
+            allParameters=Collection([parameter]),
+            unitsManager=SimpleNamespace(isValidExpression=lambda expression, unit:
+                (expression, unit) == ("(Slots * 2) * 1 cm", "cm"),
+            ),
+        ),
+    )
+    result = queries.set_parameter_expression(
+        handler, "parameter-test", "Capacity", "Slots * 2", "4",
+    )
+    assert result["parameter"]["expression"] == "Slots * 2"
+
+
 @pytest.mark.parametrize(
     "arguments, count, value_type, object_type, valid",
     [
@@ -219,6 +241,183 @@ def test_parameter_query_returns_text_without_reading_numeric_value(queries):
     result = queries.get_design_parameters(handler, "parameter-test")
     assert result["parameters"][0]["text_value"] == "Clean"
     assert "value_internal" not in result["parameters"][0]
+
+
+def test_parametric_convex_profile_drives_shared_vertices(queries):
+    points, lines, dimensions = [], [], []
+
+    def add_point(position):
+        point = SimpleNamespace(geometry=position, isFixed=False)
+        points.append(point)
+        return point
+
+    def add_dimension(reference, point, orientation, text_point):
+        dimension = SimpleNamespace(
+            parameter=SimpleNamespace(name=f"d{len(dimensions)}", expression=""),
+        )
+        dimensions.append((reference, point, orientation, dimension))
+        return dimension
+
+    sketch = SimpleNamespace(
+        name="RampProfile", isFullyConstrained=True,
+        sketchCurves=SimpleNamespace(count=0, sketchLines=SimpleNamespace(
+            addByTwoPoints=lambda first, second:
+            lines.append((first, second)) or object(),
+        )),
+        sketchPoints=SimpleNamespace(add=add_point),
+        sketchDimensions=SimpleNamespace(addDistanceDimension=add_dimension),
+        profiles=SimpleNamespace(count=1),
+    )
+    expressions = {"0 mm": 0, "Width": 4, "Height": 2}
+    handler = SimpleNamespace(
+        app=SimpleNamespace(activeDocument=SimpleNamespace(
+            isValid=True, creationId="profile-test",
+        )),
+        _design=lambda: SimpleNamespace(unitsManager=SimpleNamespace(
+            isValidExpression=lambda expression, unit: expression in expressions,
+            evaluateExpression=lambda expression, unit: expressions[expression],
+        )),
+        _sketch_by_name=lambda name, component: sketch,
+    )
+    core = SimpleNamespace(Point3D=SimpleNamespace(
+        create=lambda x, y, z: SimpleNamespace(x=x, y=y, z=z),
+    ))
+    fusion = SimpleNamespace(DimensionOrientations=SimpleNamespace(
+        HorizontalDimensionOrientation="x", VerticalDimensionOrientation="y",
+    ))
+    result = queries.draw_parametric_convex_profile(
+        handler, document_id="profile-test", sketch_name="RampProfile",
+        vertices=[
+            {"x": "0 mm", "y": "0 mm"}, {"x": "Width", "y": "0 mm"},
+            {"x": "Width", "y": "Height"}, {"x": "0 mm", "y": "Height"},
+        ],
+        module_loader=lambda name: core if name == "adsk.core" else fusion,
+    )
+    assert points[0].isFixed
+    assert lines[-1][1] is lines[0][0]
+    assert len(lines) == 4 and len(dimensions) == 8
+    assert dimensions[2][3].parameter.expression == "(Width) - (-1.0 cm)"
+    assert result["is_fully_constrained"] is True
+    assert result["dimension_names"] == [f"d{index}" for index in range(8)]
+
+
+def test_feature_pattern_uses_component_axis_and_native_expressions(queries):
+    selected = []
+    seed = SimpleNamespace(name="ShelfExtrude", isValid=True, isSuppressed=False)
+    feature = SimpleNamespace(name="Pattern1", healthState=0)
+    requests = []
+
+    def create_input(entities, axis, quantity, spacing, distance_type):
+        requests.append((entities, axis, quantity, spacing, distance_type))
+        return SimpleNamespace()
+
+    component = SimpleNamespace(
+        name="Child", features=Collection([seed]),
+        zConstructionAxis="child-z",
+    )
+    component.features.rectangularPatternFeatures = SimpleNamespace(
+        createInput=create_input, add=lambda request: feature,
+    )
+    handler = SimpleNamespace(
+        app=SimpleNamespace(activeDocument=SimpleNamespace(
+            isValid=True, creationId="pattern-test",
+        )),
+        _design=lambda: SimpleNamespace(unitsManager=SimpleNamespace(
+            isValidExpression=lambda expression, unit: True,
+            evaluateExpression=lambda expression, unit:
+            2 if expression == "(TierCount / 2) * 1 cm" else 6,
+        )),
+        _component_by_name=lambda name: component,
+    )
+    core = SimpleNamespace(
+        ObjectCollection=SimpleNamespace(create=lambda: SimpleNamespace(
+            add=lambda entity: selected.append(entity),
+        )),
+        ValueInput=SimpleNamespace(createByString=lambda expression: expression),
+    )
+    fusion = SimpleNamespace(PatternDistanceType=SimpleNamespace(
+        SpacingPatternDistanceType="spacing",
+    ))
+    result = queries.pattern_features(
+        handler, document_id="pattern-test", component_name="Child",
+        feature_names=["ShelfExtrude"], axis="z",
+        quantity="TierCount / 2", spacing="TierPitch * 2",
+        feature_name="ShelfPairs",
+        module_loader=lambda name: core if name == "adsk.core" else fusion,
+    )
+    assert selected == [seed]
+    assert requests[0][1:] == (
+        "child-z", "TierCount / 2", "TierPitch * 2", "spacing",
+    )
+    assert feature.name == "ShelfPairs"
+    assert result["feature_name"] == "ShelfPairs"
+
+
+@pytest.mark.parametrize("positions", [
+    [(0, 0), (1, 1), (0, 1), (1, 0)],
+    [(0, 0), (1, 0), (1, 0), (0, 1)],
+    [(0, 0), (1, 0), (2, 0), (0, 1)],
+    [(-2, 0), (1, 0), (0, 1)],
+    [(0, 0), (float("nan"), 0), (0, 1)],
+    [(0, 0), (1, 0)],
+])
+def test_invalid_profile_rejected_before_geometry(queries, positions):
+    expressions = {
+        str(value): value for point in positions for value in point
+    }
+    handler = SimpleNamespace(
+        app=SimpleNamespace(activeDocument=SimpleNamespace(
+            isValid=True, creationId="profile-test",
+        )),
+        _design=lambda: SimpleNamespace(unitsManager=SimpleNamespace(
+            isValidExpression=lambda expression, unit: True,
+            evaluateExpression=lambda expression, unit: expressions[expression],
+        )),
+        _sketch_by_name=lambda name, component: SimpleNamespace(
+            sketchCurves=SimpleNamespace(count=0),
+        ),
+    )
+    loads = []
+    with pytest.raises(ValueError):
+        queries.draw_parametric_convex_profile(
+            handler, "profile-test", "EmptySketch",
+            [{"x": str(x), "y": str(y)} for x, y in positions],
+            module_loader=lambda name: loads.append(name),
+        )
+    assert loads == []
+
+
+@pytest.mark.parametrize("quantity, spacing, overrides", [
+    (0, 6, {}), (1.5, 6, {}), (1001, 6, {}),
+    (float("inf"), 6, {}), (2, 0, {}),
+    (2, float("nan"), {}),
+    (2, 6, {"feature_names": ["Seed", "Seed"]}),
+    (2, 6, {"axis": "w"}),
+    (2, 6, {"feature_name": ""}),
+])
+def test_invalid_feature_pattern_rejected_before_geometry(
+    queries, quantity, spacing, overrides,
+):
+    handler = SimpleNamespace(
+        app=SimpleNamespace(activeDocument=SimpleNamespace(
+            isValid=True, creationId="pattern-test",
+        )),
+        _design=lambda: SimpleNamespace(unitsManager=SimpleNamespace(
+            isValidExpression=lambda expression, unit: True,
+            evaluateExpression=lambda expression, unit:
+            quantity if expression == "(Count) * 1 cm" else spacing,
+        )),
+    )
+    loads = []
+    with pytest.raises(ValueError):
+        queries.pattern_features(handler, **{
+            "document_id": "pattern-test", "feature_names": ["Seed"],
+            "axis": "z", "quantity": "Count", "spacing": "Pitch",
+            "feature_name": "Pattern",
+            "module_loader": lambda name: loads.append(name),
+            **overrides,
+        })
+    assert loads == []
 
 
 @pytest.mark.parametrize(

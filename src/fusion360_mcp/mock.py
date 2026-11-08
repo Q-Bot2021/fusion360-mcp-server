@@ -60,6 +60,8 @@ _MUTATION_MOCKS: frozenset[str] = frozenset(
         "insert_design",
         "set_parameter",
         "set_parameter_expression",
+        "draw_parametric_convex_profile",
+        "pattern_features",
         "execute_code",
         "auto_constrain",
         "create_ucs",

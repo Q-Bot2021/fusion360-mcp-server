@@ -47,7 +47,10 @@ ASSEMBLY_CANDIDATES = frozenset(
     }
 )
 PARAMETER_CANDIDATES = frozenset(
-    {"get_design_parameters", "set_parameter_expression"}
+    {
+        "get_design_parameters", "set_parameter_expression",
+        "draw_parametric_convex_profile", "pattern_features",
+    }
 )
 
 
@@ -130,6 +133,8 @@ class CommandHandler:
             # parametric & agent-authored changes
             "set_parameter",
             "set_parameter_expression",
+            "draw_parametric_convex_profile",
+            "pattern_features",
             "execute_code",
             # sketch constraint mutation
             "auto_constrain",

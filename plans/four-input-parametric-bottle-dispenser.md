@@ -4,7 +4,8 @@
 **Breadcrumb:** [execution record](../docs/tickets/issue-32-parametric-bottle-dispenser.md)  
 **Status:** Workflow migration published. Parameter-inspection/expression-edit
 candidates passed unit, initialized protocol and development-live checks.
-Production promotion, remaining geometry/pattern support and CAD are pending.
+Constrained-profile and feature-pattern development-live checks also pass.
+Production promotion and CAD remain pending.
 
 ## Confirmed requirements and ownership
 
@@ -93,6 +94,12 @@ This can bind existing numeric sketch/plane/feature dimensions to native
 expressions without proliferating expression fields across every tool.
 Pattern-feature creation and origin constraints remain separate work; the
 parameter primitives alone do not establish a four-input dispenser.
+
+Second slice: expression-driven closed convex profiles and native feature
+patterns pass XY/root and YZ/child joined-solid tests, including quantity
+**2 -> 1 -> 3** and size changes with healthy feature history. The single-copy
+pattern case needed by the default two-tier layout is verified. CAD feed-path
+and print-envelope verification remain distinct pending requirements.
 
 Done when the API/geometry choices meet all four inputs, including topology
 changes, and known unsupported inputs have explicit outcomes before mutation.

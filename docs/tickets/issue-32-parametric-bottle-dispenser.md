@@ -168,6 +168,68 @@ the durable assertions/hashes above record its acceptance scope. Parameter
 primitives do not yet create count-driven feature patterns or constrain every
 sketch origin. No production promotion/live result or dispenser CAD exists.
 
+## Constrained geometry and feature-pattern development acceptance
+
+Implemented two further generic development candidates:
+
+- `draw_parametric_convex_profile`: one fully constrained closed convex region
+  in an explicitly selected empty sketch; 3-32 ordered vertices with native
+  x/y length expressions. Point coordinates must stay above the caller's fixed
+  reference coordinates. Convexity, duplicates, collinearity, references and
+  expressions are validated before geometry mutation.
+- `pattern_features`: explicitly selected unsuppressed features in their
+  owning component, repeated along a local construction axis with native
+  quantity and spacing expressions. Quantity is integer 1-1000 and spacing
+  nonzero at creation. Future input changes require health/geometry inspection.
+
+The focused live test exposed two independently reproduced API behaviors:
+seeding points at the origin infers coincident constraints, and constructing
+edges before coordinate dimensions infers redundant constraints. Seed
+independent points off-origin, drive them to the exact requested expressions,
+then connect existing points. This is initialization only; no residual geometry
+offset or fixed vertex is introduced. Removing either precaution reproduced
+the over-constraint error; both are exercised by zero-coordinate live fixtures.
+
+Fusion's units manager uses document length semantics with empty validation
+units and rejects `"unitless"` as a unit string. Validate/evaluate the quantity
+expression multiplied by `1 cm` as a length, then pass the original expression
+to the native pattern. This dimensional normalization rejects unitful quantity
+expressions while retaining dimensionless named parameter references.
+
+Verification:
+
+- Focused unit/protocol/registry/mutation-sync run: **75 passed**, four unrelated
+  live cases deselected.
+- Explicit initialized-stdio/development-live run:
+  `uv run --python 3.12 pytest tests/test_parametric_geometry_live.py --run-fusion-e2e -q`:
+  **1 passed**, with XY/root and YZ/child cases on Fusion 2705.1.25 / Windows.
+- Closed profile fully constrained, eight driving coordinates, joined shelves
+  remain one solid, count changes **2 -> 1 -> 3**, and width **40 -> 50 mm**
+  changes the expected volume. Default inputs restored.
+- Rejected fractional/unitful quantities, zero spacing, missing seeds, stale
+  document and duplicate pattern name leave bodies, sketches and timeline
+  unchanged. Pattern and owning feature health are healthy.
+- No dispenser CAD created; disposable unsaved fixtures retained. No existing
+  user design cleared, overwritten or saved.
+
+Exact hashes from the successful geometry live report:
+
+```text
+addon/server/command_handler.py
+bdec3099e1e62b0f5da49427a54837dcad017ee720caa9e58ebe4747597d41f4
+addon/server/mechanical_queries.py
+9f6ecf4c110ea7bf3fad0bd6f3e384ecd1b375083286365889a165d651152c75
+tests/development_mcp.py
+af7248cc6c983f0084b1bcbaf7a98d2556d8269c0da782098f73a3a1fc721644
+tests/test_parametric_geometry_live.py
+80979bd6a89d96e44f6c9b31a880e4f265ac2ec4f8ac556b0e3f55c399ca4903
+```
+
+Raw report: `.pytest_cache/issue-32-geometry-development-live.json`.
+Production registration/restart/live acceptance and client discovery remain
+pending. Generated audit HTML browser inspection was interrupted; freshness
+tests passed, but visual inspection is not claimed.
+
 ## Closeout
 
 No merge approval, resolution comment or final-state verification yet.

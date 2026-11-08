@@ -437,6 +437,84 @@ PARAMETER_CANDIDATES = (
         },
     },
 )
+PARAMETRIC_GEOMETRY_CANDIDATES = (
+    {
+        "name": "draw_parametric_convex_profile",
+        "title": "Development: Constrained Convex Profile",
+        "description": (
+            "Create one fully constrained convex polygon in an empty named "
+            "sketch, with native expression-driven local x/y vertex coordinates. "
+            "Use 3-32 ordered vertices, no duplicate or collinear edges. Each "
+            "coordinate must remain strictly greater than its fixed reference "
+            "coordinate (default -1 cm) throughout later parameter edits; "
+            "choose lower reference coordinates for negative-quadrant profiles. "
+            "No fixed world plane or root component assumption. " + DIRECT_TOOL_CALLS
+        ),
+        "inputSchema": {
+            "type": "object", "additionalProperties": False,
+            "required": ["document_id", "sketch_name", "vertices"],
+            "properties": {
+                "document_id": {"type": "string", "minLength": 1},
+                "sketch_name": {"type": "string", "minLength": 1},
+                "component_name": {"type": "string", "minLength": 1},
+                "reference_x": {"type": "number", "default": -1},
+                "reference_y": {"type": "number", "default": -1},
+                "vertices": {
+                    "type": "array", "minItems": 3, "maxItems": 32,
+                    "items": {
+                        "type": "object", "additionalProperties": False,
+                        "required": ["x", "y"],
+                        "properties": {
+                            axis: {"type": "string", "minLength": 1}
+                            for axis in ("x", "y")
+                        },
+                    },
+                },
+            },
+        },
+        "annotations": {
+            "readOnlyHint": False, "destructiveHint": False,
+            "idempotentHint": False,
+        },
+    },
+    {
+        "name": "pattern_features",
+        "title": "Development: Parametric Feature Pattern",
+        "description": (
+            "Pattern explicitly named unsuppressed features in one local "
+            "component along its x/y/z axis, using native quantity and spacing "
+            "expressions. Quantity must evaluate to an integer 1-1000; spacing "
+            "must be a nonzero length. External/nested seed selection is not "
+            "implicit; select the unique owning component. Pattern feature "
+            "name must be new. Inspect resulting geometry and feature health; "
+            "supported seed combinations remain Fusion-dependent. " + DIRECT_TOOL_CALLS
+        ),
+        "inputSchema": {
+            "type": "object", "additionalProperties": False,
+            "required": [
+                "document_id", "feature_names", "axis", "quantity",
+                "spacing", "feature_name",
+            ],
+            "properties": {
+                "document_id": {"type": "string", "minLength": 1},
+                "component_name": {"type": "string", "minLength": 1},
+                "feature_names": {
+                    "type": "array", "minItems": 1, "maxItems": 32,
+                    "uniqueItems": True,
+                    "items": {"type": "string", "minLength": 1},
+                },
+                "axis": {"enum": ["x", "y", "z"]},
+                "quantity": {"type": "string", "minLength": 1},
+                "spacing": {"type": "string", "minLength": 1},
+                "feature_name": {"type": "string", "minLength": 1},
+            },
+        },
+        "annotations": {
+            "readOnlyHint": False, "destructiveHint": False,
+            "idempotentHint": False,
+        },
+    },
+)
 _VECTOR = {
     "type": "array",
     "minItems": 3,
@@ -735,6 +813,7 @@ def development_lookup(name: str) -> dict | None:
         *STENCIL_CANDIDATES,
         *ASSEMBLY_CANDIDATES,
         *PARAMETER_CANDIDATES,
+        *PARAMETRIC_GEOMETRY_CANDIDATES,
     ):
         if name == definition["name"]:
             return get_tool_by_name(name) or definition
@@ -756,6 +835,7 @@ def development_list() -> list[types.Tool]:
                 *STENCIL_CANDIDATES,
                 *ASSEMBLY_CANDIDATES,
                 *PARAMETER_CANDIDATES,
+                *PARAMETRIC_GEOMETRY_CANDIDATES,
             )
             if get_tool_by_name(definition["name"]) is None
         ),

@@ -26,6 +26,7 @@ from tests.development_mcp import (
     ASSEMBLY_CANDIDATES,
     DOCUMENT_CANDIDATES,
     PARAMETER_CANDIDATES,
+    PARAMETRIC_GEOMETRY_CANDIDATES,
     STENCIL_CANDIDATES,
     development_list,
     development_lookup,
@@ -51,7 +52,10 @@ def test_cad_development_discovery_stays_separate():
         definition["name"] for definition in (*DOCUMENT_CANDIDATES, *STENCIL_CANDIDATES)
     } | {
         definition["name"]
-        for definition in (*ASSEMBLY_CANDIDATES, *PARAMETER_CANDIDATES)
+        for definition in (
+            *ASSEMBLY_CANDIDATES, *PARAMETER_CANDIDATES,
+            *PARAMETRIC_GEOMETRY_CANDIDATES,
+        )
     }
     promoted_assembly_tools = {
         definition["name"]
