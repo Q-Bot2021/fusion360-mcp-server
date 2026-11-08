@@ -249,6 +249,10 @@ class CommandHandler:
                 "create_parameter": self.create_parameter,
                 "set_parameter": self.set_parameter,
                 "delete_parameter": self.delete_parameter,
+                "get_design_parameters": self.get_design_parameters,
+                "set_parameter_expression": self.set_parameter_expression,
+                "draw_parametric_convex_profile": self.draw_parametric_convex_profile,
+                "pattern_features": self.pattern_features,
                 # surface operations
                 "patch_surface": self.patch_surface,
                 "stitch_surfaces": self.stitch_surfaces,
@@ -3464,6 +3468,47 @@ class CommandHandler:
             raise RuntimeError(f"Parameter '{name}' not found")
         param.deleteMe()
         return {"deleted": True, "name": name}
+
+    def get_design_parameters(
+        self, document_id: str, offset: int = 0, limit: int = 100,
+    ):
+        result = _mechanical_queries.get_design_parameters(
+            self, document_id, offset, limit,
+        )
+        result.pop("development_only", None)
+        return result
+
+    def set_parameter_expression(
+        self, document_id: str, name: str, expression: str, expected_expression: str,
+    ):
+        result = _mechanical_queries.set_parameter_expression(
+            self, document_id, name, expression, expected_expression,
+        )
+        result.pop("development_only", None)
+        return result
+
+    def draw_parametric_convex_profile(
+        self, document_id: str, sketch_name: str, vertices: list,
+        component_name: str = None, reference_x: float = -1.0,
+        reference_y: float = -1.0,
+    ):
+        result = _mechanical_queries.draw_parametric_convex_profile(
+            self, document_id, sketch_name, vertices, component_name,
+            reference_x, reference_y,
+        )
+        result.pop("development_only", None)
+        return result
+
+    def pattern_features(
+        self, document_id: str, feature_names: list, axis: str,
+        quantity: str, spacing: str, feature_name: str, component_name: str = None,
+    ):
+        result = _mechanical_queries.pattern_features(
+            self, document_id, feature_names, axis, quantity, spacing,
+            feature_name, component_name,
+        )
+        result.pop("development_only", None)
+        return result
 
     # ------------------------------------------------------------------
     # Surface Operations

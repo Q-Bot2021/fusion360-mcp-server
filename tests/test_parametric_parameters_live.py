@@ -3,6 +3,7 @@
 import hashlib
 import json
 import math
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -15,10 +16,11 @@ from mcp.client.stdio import stdio_client
 pytestmark = pytest.mark.fusion_e2e
 
 
-def test_parameter_expression_regenerates_local_components_live():
+@pytest.mark.parametrize("profile", ["development", "production"])
+def test_parameter_expression_regenerates_local_components_live(profile):
     async def check():
         root = Path(__file__).resolve().parents[1]
-        destination = root / ".pytest_cache/issue-32-parameter-development-live.json"
+        destination = root / f".pytest_cache/issue-32-parameter-{profile}-live.json"
         destination.parent.mkdir(parents=True, exist_ok=True)
         report = {
             "status": "started",
@@ -39,8 +41,23 @@ def test_parameter_expression_regenerates_local_components_live():
 
         parameters = StdioServerParameters(
             command=sys.executable,
-            args=["-m", "tests.development_mcp"],
+            args=[
+                "-m",
+                "tests.development_mcp",
+                "--port",
+                "9876" if profile == "production" else "9877",
+            ],
         )
+        if profile == "production":
+            installed = Path(os.environ["APPDATA"]) / (
+                "Autodesk\\Autodesk Fusion 360\\API\\AddIns\\Fusion360MCP"
+            )
+            for name in ("command_handler.py", "mechanical_queries.py"):
+                actual = hashlib.sha256((installed / "server" / name).read_bytes())
+                assert (
+                    actual.hexdigest()
+                    == report["source_sha256"][f"addon/server/{name}"]
+                )
         with anyio.fail_after(180):
             async with stdio_client(parameters) as streams:
                 async with ClientSession(
@@ -62,8 +79,10 @@ def test_parameter_expression_regenerates_local_components_live():
                         assert result.isError is error, result.content
                         return result.structuredContent
 
-                    reload_result = await call("dev_reload_candidates", {})
-                    report["loaded_source"] = reload_result
+                    if profile == "development":
+                        report["loaded_source"] = await call(
+                            "dev_reload_candidates", {}
+                        )
                     await call("ping", {})
                     for plane, component_name in (
                         ("xy", None),

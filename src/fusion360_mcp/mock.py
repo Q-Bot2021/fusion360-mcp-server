@@ -115,7 +115,7 @@ def mock_command(command_type: str, params: dict[str, Any] | None = None) -> dic
     handler = _DISPATCH.get(command_type, _default_mock)
     result = handler(params)
     result.setdefault("ok", True)
-    if command_type in _MUTATION_MOCKS and "deltas" not in result:
+    if result["ok"] and command_type in _MUTATION_MOCKS and "deltas" not in result:
         result["deltas"] = dict(_MOCK_DELTAS)
     result["mode"] = "mock"
     return result
@@ -729,6 +729,20 @@ def _create_box_parametric(p: dict) -> dict:
 
 
 # ── parameter tools ───────────────────────────────────────────────────
+
+
+def _parametric_mock_unavailable(_p: dict) -> dict:
+    return {
+        "ok": False,
+        "error_kind": "INVALID_INPUT",
+        "error_message": (
+            "Mock mode does not simulate the native Fusion parameter solver "
+            "or constrained feature history; use a live disposable design."
+        ),
+        "hints": [
+            "Unit tests use explicit API boundary fixtures; live tests verify CAD."
+        ],
+    }
 
 
 def _get_parameters(_p: dict) -> dict:
@@ -1390,6 +1404,10 @@ _DISPATCH: dict[str, Any] = {
     "import_mesh": _import_mesh,
     "create_box_parametric": _create_box_parametric,
     "get_parameters": _get_parameters,
+    "get_design_parameters": _parametric_mock_unavailable,
+    "set_parameter_expression": _parametric_mock_unavailable,
+    "draw_parametric_convex_profile": _parametric_mock_unavailable,
+    "pattern_features": _parametric_mock_unavailable,
     "create_parameter": _create_parameter,
     "set_parameter": _set_parameter,
     "delete_parameter": _delete_parameter,

@@ -91,6 +91,10 @@ def test_promoted_design_tool_has_identical_metadata_in_both_profiles():
         "chamfer_edges",
         "get_body_topology",
         "save_design",
+        "get_design_parameters",
+        "set_parameter_expression",
+        "draw_parametric_convex_profile",
+        "pattern_features",
     ],
 )
 def test_generic_promotions_share_production_metadata(name):

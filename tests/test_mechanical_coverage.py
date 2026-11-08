@@ -233,7 +233,7 @@ def test_committed_mode_ledger_has_explicit_current_gate_statuses():
         }
 
     expected = set(advertised_modes(get_tool_list()))
-    assert len(rows) == len(expected) == 303
+    assert len(rows) == len(expected) == 309
     assert {(row["tool"], row["mode"]) for row in rows} == expected
     for row in rows:
         assert row["generic_scope_status"] == scopes[row["tool"]]

@@ -99,6 +99,31 @@ stdio configuration, not the disabled TCP bridge. See [devcontainer setup](devco
 Use an installation containing these changes, not an older published package.
 Restart the installed add-in and MCP after updating them.
 
+### Native expression-driven modeling
+
+The local 0.13.0 registry adds four capabilities; update both the MCP and
+installed add-in, restart the add-in, and reconnect the client before use:
+
+- `get_design_parameters`: inspect paginated local user/model parameters,
+  including expressions, units and separate parameter/creator ownership.
+- `set_parameter_expression`: edit a numeric expression using the active
+  document ID, unique parameter name and exact inspected previous expression.
+  Text and API-derived parameters cannot be edited.
+- `draw_parametric_convex_profile`: fully constrain 3-32 ordered convex vertices
+  in an explicitly selected empty sketch using native coordinate expressions.
+  Coordinates must remain above the fixed reference coordinates (default
+  -1 cm on each sketch axis); provide lower references for negative coordinates.
+- `pattern_features`: repeat uniquely named unsuppressed features along an
+  owning component's local x/y/z axis using native quantity/spacing expressions.
+  Quantity must evaluate to an integer from 1 through 1000; spacing must be
+  finite and nonzero. Joined copies require a connecting body along their path.
+
+Mock mode reports an explicit limitation rather than simulating native sketch
+constraints or feature history. Development-live tests cover all three local
+axes, negative coordinates, signed spacing and quantity changes 2 -> 1 -> 3.
+Installed production restart and live acceptance are still pending for this
+ticket; registration alone is not acceptance.
+
 Loopback is not authentication. Existing OS port proxies or tunnels can still
 expose a local listener and require separate, approved cleanup. This policy does
 not sandbox the remaining CAD/import/export tools or other agent execution tools.

@@ -3,11 +3,56 @@
 **Issue:** [#32](https://github.com/Q-Bot2021/fusion360-mcp-server/issues/32)  
 **Plan:** [execution plan](../../plans/four-input-parametric-bottle-dispenser.md)  
 **Branch:** `tickets/parametric-modeling/Implementation/ticket_32`  
-**Status:** Workflow migration published; first parameter-tool candidates passed
-unit, initialized protocol and development-live checks. Production promotion,
-remaining geometry/pattern work and CAD remain pending.
+**Status:** Four generic capabilities verified locally and staged into production
+with original-file backups. Add-in restart, client reconnection and production
+live acceptance remain pending. Dispenser CAD has not yet been created.
 
-## Request and preflight
+## Latest production staging milestone
+
+User approved production promotion. The 0.13.0 registry and explicit add-in
+wrappers expose four generic parameter/profile/pattern capabilities; development
+discovery reuses their metadata. Public wrappers do not expose the test loader.
+Mock solver/history limitations return errors without fabricated mutation deltas.
+
+Verification of this promotion slice:
+
+- Full normal suite: **817 passed, 184 skipped**; skips are not acceptance.
+- Explicit combined development-live workflows: **2 passed**, both production
+  cases deselected. XY/root, YZ/child and XZ/child cover all local pattern axes,
+  negative profile coordinates, signed spacing, quantities 2 -> 1 -> 3 and
+  regenerated width/volume/one-solid/feature-health checks.
+- Full Ruff checks and `git diff --check` passed. Normal tests include registry
+  coverage, 309 advertised-mode inventory, generated-ledger freshness and
+  instruction synchronization. VS Code's test tool was unavailable because
+  no client was connected; the existing pytest runner was used.
+- Supplemental XZ testing initially placed negative-direction copies outside
+  the positive-direction connecting spine. Correcting the fixture's spine
+  offset established the same independent expected volumes as the other axes.
+  Negative `extrude` distance remains unsupported by that existing tool; the
+  fixture uses its supported positive extent and an offset spine.
+- Generated audit visual inspection remains blocked by the disconnected client.
+
+Before staging, all three installed production files matched repository main
+after newline normalization. Exact original hashes were guarded, originals
+backed up, then only the handler, mechanical helper and manifest were copied.
+Installed SHA-256 readback:
+
+- Handler: `4013383ea7ee2b959859e2da470ec60808aa6c12e3921e2f76411dc74185067f`
+- Helper: `eadade258c07358646639e8de14dc15058633d3eac89a6af279bc6597f2c834e`
+- Manifest: `c7cf113ba32c893d82226aadb1e54f159eb206c61b619655552e8b49c230f895`
+
+Originals and staging receipt are retained in the session's
+`files\production-stage-32` directory. The production add-in has **not** been
+restarted. Production live tests and visible client discovery are mandatory next
+gates; staged bytes alone do not prove running code. Local mode acceptance stays
+pending until its evidence is bound to a published source revision.
+
+No connected client is currently available for Fusion/GitHub/browser tools;
+configured GH_TOKEN/GITHUB_TOKEN fallback environment variables are absent.
+Remote checklist synchronization therefore remains pending reconnection.
+The existing production connection and retained development add-in are preserved.
+
+## Original request and preflight
 
 On 2026-11-08, the user approved extending generic Fusion MCP capabilities to
 deliver the bottle dispenser and requested one new project ticket plus migration

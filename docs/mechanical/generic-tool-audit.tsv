@@ -102,3 +102,7 @@ trim_surface	review_required
 undo	review_required
 unfold	review_required
 unsuppress_feature	review_required
+get_design_parameters	accepted_scope
+set_parameter_expression	accepted_scope
+draw_parametric_convex_profile	accepted_scope
+pattern_features	accepted_scope

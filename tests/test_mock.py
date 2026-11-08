@@ -47,6 +47,16 @@ class TestMockResponseStructure:
 
 
 class TestMockPing:
+    @pytest.mark.parametrize("name", [
+        "get_design_parameters", "set_parameter_expression",
+        "draw_parametric_convex_profile", "pattern_features",
+    ])
+    def test_native_parametric_solver_is_not_faked(self, name):
+        result = mock_command(name, {})
+        assert result["ok"] is False
+        assert "Mock mode does not simulate" in result["error_message"]
+        assert "deltas" not in result
+
     def test_promoted_read_only_queries(self):
         features = mock_command("get_feature_health", {"offset": 1, "limit": 1})
         assert features["features"] == [] and features["total"] == 1

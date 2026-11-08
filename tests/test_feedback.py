@@ -70,7 +70,7 @@ class TestMockForcedError:
 
 
 class TestMockDeltas:
-    """Mutation mocks carry a deltas sub-dict; read-only mocks do not."""
+    """Successful mutation mocks carry deltas; failures and queries do not."""
 
     def test_mutation_has_deltas(self):
         for cmd in _MUTATION_MOCKS:
@@ -78,6 +78,18 @@ class TestMockDeltas:
             if cmd in DISABLED_COMMANDS:
                 assert result["ok"] is False
                 assert "deltas" not in result
+                continue
+            if cmd in {
+                "set_parameter_expression",
+                "draw_parametric_convex_profile",
+                "pattern_features",
+            }:
+                assert result["ok"] is False
+                assert "does not simulate" in result["error_message"]
+                assert "deltas" not in result
+                continue
+            if result.get("ok") is False:
+                assert "deltas" not in result, f"{cmd} failure must not expose deltas"
                 continue
             assert "deltas" in result, f"{cmd} should expose deltas"
             deltas = result["deltas"]

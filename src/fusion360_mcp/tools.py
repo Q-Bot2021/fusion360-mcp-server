@@ -333,7 +333,9 @@ TOOLS: list[dict] = [
                     "default": "top",
                 },
                 "face_indices": {
-                    "type": "array", "minItems": 1, "maxItems": 100,
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 100,
                     "uniqueItems": True,
                     "items": {"type": "integer", "minimum": 0},
                 },
@@ -1792,15 +1794,9 @@ TOOLS: list[dict] = [
                     "maxLength": 100,
                 },
                 "rotation_axis": {"type": "string", "enum": ["x", "y", "z"]},
-                "slide_direction": {
-                    "type": "string", "enum": ["x", "y", "z"]
-                },
-                "normal_direction": {
-                    "type": "string", "enum": ["x", "y", "z"]
-                },
-                "pitch_direction": {
-                    "type": "string", "enum": ["x", "y", "z"]
-                },
+                "slide_direction": {"type": "string", "enum": ["x", "y", "z"]},
+                "normal_direction": {"type": "string", "enum": ["x", "y", "z"]},
+                "pitch_direction": {"type": "string", "enum": ["x", "y", "z"]},
                 "yaw_direction": {"type": "string", "enum": ["x", "y", "z"]},
             },
         },
@@ -1872,7 +1868,10 @@ TOOLS: list[dict] = [
             "properties": {
                 "offset": {"type": "integer", "minimum": 0, "default": 0},
                 "limit": {
-                    "type": "integer", "minimum": 1, "maximum": 200, "default": 100
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 200,
+                    "default": 100,
                 },
             },
         },
@@ -2910,7 +2909,153 @@ TOOLS.extend(
     ]
 )
 
+TOOLS.extend(
+    [
+        {
+            "name": "get_design_parameters",
+            "title": "Inspect Driving Parameters",
+            "description": (
+                "Read paginated user/model parameters across local components in "
+                "the inspected active design, including expressions, internal "
+                "numeric values (cm/radians), model roles and owning components. "
+                "Externally referenced designs are excluded by Fusion. Requires "
+                "the September 2025 parameter value-type API. " + DIRECT_TOOL_CALLS
+            ),
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["document_id"],
+                "properties": {
+                    "document_id": {"type": "string", "minLength": 1},
+                    "offset": {"type": "integer", "minimum": 0},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 200},
+                },
+            },
+        },
+        {
+            "name": "set_parameter_expression",
+            "title": "Edit Driving Parameter Expression",
+            "description": (
+                "Set one uniquely named local numeric user/model parameter's "
+                "Fusion expression in the inspected active design. Require its "
+                "exact inspected expression to reject stale edits; validate "
+                "against the parameter's declared units and return actual "
+                "parameter readback. Use explicit units in literal expressions. "
+                "Text/derived parameters are unsupported. Inspect feature health "
+                "and geometry after each edit; expression validity is not proof "
+                "of geometric validity. " + DIRECT_TOOL_CALLS
+            ),
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "document_id",
+                    "name",
+                    "expression",
+                    "expected_expression",
+                ],
+                "properties": {
+                    "document_id": {"type": "string", "minLength": 1},
+                    "name": {"type": "string", "minLength": 1, "maxLength": 100},
+                    "expression": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1000,
+                    },
+                    "expected_expression": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1000,
+                    },
+                },
+            },
+        },
+        {
+            "name": "draw_parametric_convex_profile",
+            "title": "Constrained Convex Profile",
+            "description": (
+                "Create one fully constrained convex polygon in an empty named "
+                "sketch, with native expression-driven local x/y vertex coordinates. "
+                "Use 3-32 ordered vertices, no duplicate or collinear edges. Each "
+                "coordinate must remain strictly greater than its fixed reference "
+                "coordinate (default -1 cm) throughout later parameter edits; "
+                "choose lower reference coordinates for negative-quadrant profiles. "
+                "No fixed world plane or root component assumption. "
+                + DIRECT_TOOL_CALLS
+            ),
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["document_id", "sketch_name", "vertices"],
+                "properties": {
+                    "document_id": {"type": "string", "minLength": 1},
+                    "sketch_name": {"type": "string", "minLength": 1},
+                    "component_name": {"type": "string", "minLength": 1},
+                    "reference_x": {"type": "number", "default": -1},
+                    "reference_y": {"type": "number", "default": -1},
+                    "vertices": {
+                        "type": "array",
+                        "minItems": 3,
+                        "maxItems": 32,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["x", "y"],
+                            "properties": {
+                                axis: {"type": "string", "minLength": 1}
+                                for axis in ("x", "y")
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        {
+            "name": "pattern_features",
+            "title": "Parametric Feature Pattern",
+            "description": (
+                "Pattern explicitly named unsuppressed features in one local "
+                "component along its x/y/z axis, using native quantity and spacing "
+                "expressions. Quantity must evaluate to an integer 1-1000; spacing "
+                "must be a nonzero length. External/nested seed selection is not "
+                "implicit; select the unique owning component. Pattern feature "
+                "name must be new. Inspect resulting geometry and feature health; "
+                "supported seed combinations remain Fusion-dependent. "
+                + DIRECT_TOOL_CALLS
+            ),
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "document_id",
+                    "feature_names",
+                    "axis",
+                    "quantity",
+                    "spacing",
+                    "feature_name",
+                ],
+                "properties": {
+                    "document_id": {"type": "string", "minLength": 1},
+                    "component_name": {"type": "string", "minLength": 1},
+                    "feature_names": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 32,
+                        "uniqueItems": True,
+                        "items": {"type": "string", "minLength": 1},
+                    },
+                    "axis": {"enum": ["x", "y", "z"]},
+                    "quantity": {"type": "string", "minLength": 1},
+                    "spacing": {"type": "string", "minLength": 1},
+                    "feature_name": {"type": "string", "minLength": 1},
+                },
+            },
+        },
+    ]
+)
+
 _READ_ONLY = {
+    "get_design_parameters",
     "get_body_topology",
     "get_feature_health",
     "get_document_state",
@@ -2933,12 +3078,14 @@ _READ_ONLY = {
     "render_view",
 }
 _DESTRUCTIVE = {
+    "set_parameter_expression",
     "delete_all",
     "delete_parameter",
     "chamfer_edges",
     "extrude_sketch_entities",
 }
 _IDEMPOTENT = {
+    "get_design_parameters",
     "get_body_topology",
     "get_feature_health",
     "get_document_state",

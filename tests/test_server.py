@@ -138,6 +138,7 @@ class TestToolAnnotations:
             "list_components",
             "list_occurrences",
             "get_parameters",
+            "get_design_parameters",
             "get_physical_properties",
             "measure_distance",
             "measure_angle",
@@ -165,6 +166,7 @@ class TestToolAnnotations:
         destructive = {
             "delete_all",
             "delete_parameter",
+            "set_parameter_expression",
             "extrude_sketch_entities",
             "chamfer_edges",
         }

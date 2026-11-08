@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -14,10 +15,11 @@ from mcp.client.stdio import stdio_client
 pytestmark = pytest.mark.fusion_e2e
 
 
-def test_constrained_profile_and_joined_pattern_live():
+@pytest.mark.parametrize("profile", ["development", "production"])
+def test_constrained_profile_and_joined_pattern_live(profile):
     async def check():
         root = Path(__file__).resolve().parents[1]
-        destination = root / ".pytest_cache/issue-32-geometry-development-live.json"
+        destination = root / f".pytest_cache/issue-32-geometry-{profile}-live.json"
         report = {
             "status": "started",
             "calls": [],
@@ -34,8 +36,23 @@ def test_constrained_profile_and_joined_pattern_live():
         destination.parent.mkdir(parents=True, exist_ok=True)
         parameters = StdioServerParameters(
             command=sys.executable,
-            args=["-m", "tests.development_mcp"],
+            args=[
+                "-m",
+                "tests.development_mcp",
+                "--port",
+                "9876" if profile == "production" else "9877",
+            ],
         )
+        if profile == "production":
+            installed = Path(os.environ["APPDATA"]) / (
+                "Autodesk\\Autodesk Fusion 360\\API\\AddIns\\Fusion360MCP"
+            )
+            for name in ("command_handler.py", "mechanical_queries.py"):
+                actual = hashlib.sha256((installed / "server" / name).read_bytes())
+                assert (
+                    actual.hexdigest()
+                    == report["source_sha256"][f"addon/server/{name}"]
+                )
         with anyio.fail_after(180):
             async with stdio_client(parameters) as streams:
                 async with ClientSession(
@@ -60,11 +77,17 @@ def test_constrained_profile_and_joined_pattern_live():
                         assert result.isError is error, result.content
                         return result.structuredContent
 
-                    report["loaded_source"] = await call("dev_reload_candidates", {})
+                    if profile == "development":
+                        report["loaded_source"] = await call(
+                            "dev_reload_candidates", {}
+                        )
                     for plane, component_name, axis in (
                         ("xy", None, "z"),
                         ("yz", "GeometryChild", "x"),
+                        ("xz", "NegativeGeometryChild", "y"),
                     ):
+                        negative = plane == "xz"
+                        spacing = "-30 mm" if negative else "30 mm"
                         stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
                         created = await call(
                             "create_design",
@@ -95,6 +118,8 @@ def test_constrained_profile_and_joined_pattern_live():
                                 "height": "100 mm",
                                 "plane": plane,
                                 "body_name": "PatternSpine",
+                                "origin_x": -4 if negative else 0,
+                                "origin_z": -9.8 if negative else 0,
                                 **owner,
                             },
                         )
@@ -105,17 +130,25 @@ def test_constrained_profile_and_joined_pattern_live():
                             {"x": "Size", "y": "20 mm"},
                             {"x": "0 mm", "y": "20 mm"},
                         ]
-                        profile = await call(
+                        if negative:
+                            vertices = [
+                                {"x": "-Size", "y": "0 mm"},
+                                {"x": "0 mm", "y": "0 mm"},
+                                {"x": "0 mm", "y": "20 mm"},
+                                {"x": "-Size", "y": "20 mm"},
+                            ]
+                        profile_result = await call(
                             "draw_parametric_convex_profile",
                             {
                                 "document_id": identity,
                                 "sketch_name": sketch["sketch_name"],
                                 "vertices": vertices,
+                                "reference_x": -10 if negative else -1,
                                 **owner,
                             },
                         )
-                        assert profile["is_fully_constrained"]
-                        assert len(profile["dimension_names"]) == 8
+                        assert profile_result["is_fully_constrained"]
+                        assert len(profile_result["dimension_names"]) == 8
                         shelf = await call(
                             "extrude",
                             {
@@ -142,7 +175,7 @@ def test_constrained_profile_and_joined_pattern_live():
                                     "feature_names": [shelf["feature_name"]],
                                     "axis": axis,
                                     "quantity": "Count",
-                                    "spacing": "30 mm",
+                                    "spacing": spacing,
                                     "feature_name": "RejectedPattern",
                                     **owner,
                                     **override,
@@ -159,7 +192,7 @@ def test_constrained_profile_and_joined_pattern_live():
                                 "feature_names": [shelf["feature_name"]],
                                 "axis": axis,
                                 "quantity": "Count",
-                                "spacing": "30 mm",
+                                "spacing": spacing,
                                 "feature_name": "ShelfPattern",
                                 **owner,
                             },
@@ -175,7 +208,7 @@ def test_constrained_profile_and_joined_pattern_live():
                                 "feature_names": [shelf["feature_name"]],
                                 "axis": axis,
                                 "quantity": "Count",
-                                "spacing": "30 mm",
+                                "spacing": spacing,
                                 "feature_name": "ShelfPattern",
                                 **owner,
                             },

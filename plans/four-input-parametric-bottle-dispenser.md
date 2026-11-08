@@ -135,6 +135,13 @@ visible tool calls. No arbitrary execution or modeling orchestration workaround.
 
 ### 4. Model and verify the dispenser
 
+Current gate: four generic capabilities are locally verified and production
+files staged with guarded original-file backups. See the
+[latest staging evidence](../docs/tickets/issue-32-parametric-bottle-dispenser.md#latest-production-staging-milestone).
+Resume with production add-in restart, client reconnection and explicit
+production-live cases; verify direct client discovery before user modeling.
+No dispenser CAD exists yet.
+
 - [ ] Create a separate named design without clearing the unrelated active one.
 - [ ] Build constrained history, transfer path, stops, access and ventilation
   through direct tools; join all solid geometry into one body.

@@ -139,6 +139,10 @@ def test_expected_tools_present():
         "create_parameter",
         "set_parameter",
         "delete_parameter",
+        "get_design_parameters",
+        "set_parameter_expression",
+        "draw_parametric_convex_profile",
+        "pattern_features",
         # sketch constraints & dimensions
         "add_constraint",
         "auto_constrain",

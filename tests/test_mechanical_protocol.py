@@ -74,8 +74,8 @@ def test_driving_parameter_candidates_through_initialized_mcp(queries, monkeypat
             })
             assert invalid.isError
             assert parameter.expression == "BottleDiameter + 2 mm"
-        assert get_tool_by_name("get_design_parameters") is None
-        assert get_tool_by_name("set_parameter_expression") is None
+        assert get_tool_by_name("get_design_parameters") is not None
+        assert get_tool_by_name("set_parameter_expression") is not None
 
     anyio.run(check)
 
