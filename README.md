@@ -121,8 +121,9 @@ installed add-in, restart the add-in, and reconnect the client before use:
 Mock mode reports an explicit limitation rather than simulating native sketch
 constraints or feature history. Development-live tests cover all three local
 axes, negative coordinates, signed spacing and quantity changes 2 -> 1 -> 3.
-Installed production restart and live acceptance are still pending for this
-ticket; registration alone is not acceptance.
+Installed production restart and both production-live workflows passed for
+ticket #32; registration alone is not acceptance. Visible client discovery
+remains a separate prerequisite for user modeling.
 
 Loopback is not authentication. Existing OS port proxies or tunnels can still
 expose a local listener and require separate, approved cleanup. This policy does

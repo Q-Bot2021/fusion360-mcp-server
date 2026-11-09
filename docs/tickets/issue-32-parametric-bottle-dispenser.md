@@ -3,9 +3,9 @@
 **Issue:** [#32](https://github.com/Q-Bot2021/fusion360-mcp-server/issues/32)  
 **Plan:** [execution plan](../../plans/four-input-parametric-bottle-dispenser.md)  
 **Branch:** `tickets/parametric-modeling/Implementation/ticket_32`  
-**Status:** Four generic capabilities verified locally and staged into production
-with original-file backups. Add-in restart, client reconnection and production
-live acceptance remain pending. Dispenser CAD has not yet been created.
+**Status:** Four generic capabilities published, staged with original-file backups
+and verified in restarted production. Direct client capability discovery remains
+unavailable in this chat. Dispenser CAD has not yet been created.
 
 ## Latest production staging milestone
 
@@ -42,17 +42,26 @@ Installed SHA-256 readback:
 - Manifest: `c7cf113ba32c893d82226aadb1e54f159eb206c61b619655552e8b49c230f895`
 
 Originals and staging receipt are retained in the session's
-`files\production-stage-32` directory. The production add-in has **not** been
-restarted. Production live tests and visible client discovery are mandatory next
-gates; staged bytes alone do not prove running code. Local mode acceptance stays
+`files\production-stage-32` directory. The user restarted the production add-in and confirmed client reconnection.
+Both production-live workflows passed on source revision
+`46eaed61bcf4359cfaf0c865e68066f171007077`: **2 passed**, both development
+cases deselected. Installed-source hashes were verified before mutation, and
+the disposable XY/root, YZ/child and XZ/child cases exercised actual production
+dispatch. Staged bytes alone did not establish this acceptance.
+Local mode acceptance is
 bound to published source revision
 `d610bd6fa6bb658a9c68a7ad7967e0c468b7b6ed`; both development-live workflows
-were rerun successfully after publication. Production live remains pending.
+were rerun successfully after publication. Production evidence is now bound
+to `46eaed61bcf4359cfaf0c865e68066f171007077`.
 
-No connected client is currently available for Fusion/GitHub/browser tools;
+Despite the user's reconnection confirmation, direct Fusion/GitHub/browser
+tool definitions remain unavailable in this chat's exposed tool set;
 configured GH_TOKEN/GITHUB_TOKEN fallback environment variables are absent.
 Remote checklist synchronization therefore remains pending reconnection.
-The existing production connection and retained development add-in are preserved.
+The installed production endpoint demonstrably works through the retained
+acceptance infrastructure. User modeling still requires direct visible client
+operations, rather than using that infrastructure as a modeling workaround.
+The production connection and retained development add-in are preserved.
 
 ## Original request and preflight
 
