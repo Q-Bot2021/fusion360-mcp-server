@@ -45,7 +45,9 @@ Originals and staging receipt are retained in the session's
 `files\production-stage-32` directory. The production add-in has **not** been
 restarted. Production live tests and visible client discovery are mandatory next
 gates; staged bytes alone do not prove running code. Local mode acceptance stays
-pending until its evidence is bound to a published source revision.
+bound to published source revision
+`d610bd6fa6bb658a9c68a7ad7967e0c468b7b6ed`; both development-live workflows
+were rerun successfully after publication. Production live remains pending.
 
 No connected client is currently available for Fusion/GitHub/browser tools;
 configured GH_TOKEN/GITHUB_TOKEN fallback environment variables are absent.
