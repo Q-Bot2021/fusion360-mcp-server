@@ -135,6 +135,38 @@ visible tool calls. No arbitrary execution or modeling orchestration workaround.
 
 ### 4. Model and verify the dispenser
 
+User review additions (2026-11-08): revise the existing active dispenser in
+place for FDM manufacture, reducing large overhangs, support demand and sharp
+corners. Primary-source FDM research is in progress in the bottle project's
+docs directory. The user specifically selected the **inside rear-to-lower-track
+transition**, with radius `BottleDiameter / 2` (29 mm at defaults), rather than
+the outside lower-rear silhouette. Preserve bottle swept-envelope clearance
+and the gravity path when adding this curve; recheck eight-position capacity.
+
+The existing design is document
+`de7035fd-e913-4ed0-a5b6-e38fce02fe67`, still unsaved. A direct 29 mm fillet
+on the inspected floor/rear intersection (then edge 139) failed with
+`ASM_ABL_NO_GEOM_EE`. Subsequently, filling side windows and removing the
+opposite wall allowed the requested native fillet to succeed. Its model
+parameter `d133` is now `BottleDiameter / 2`, verified changing from 29 to
+30 mm when bottle diameter changes from 58 to 60 mm. Reinspect topology before
+any further edge-based operation.
+The original is backed up in the session's
+`files\bottle-dispenser-before-fdm-revision.f3d`.
+
+The FDM revision is persisted as F3D/STL in the bottle project. Far-side
+retention now uses native patterned straight taper lofts; side-down printing
+has 244.76 x 173.27 mm footprint and 238.20 mm build height. Read-only STL
+normal analysis found zero non-bed triangles below 45 degrees from horizontal;
+actual slicing/physical print remains pending. Eight ideal-cylinder positions
+passed a sampled mesh-intrusion check, not a continuous feed/release proof.
+All four independent inputs were exercised and restored with one body and
+healthy active features; obsolete windows/drains/combine are intentionally
+suppressed. Exact details, measured limitations and print instructions are in
+[FDM research and verification](../../Bottle_Dispenser/docs/fdm-design-research.md).
+Close-up visual review remains blocked by visible loft sketches/reference
+points; cloud saving awaits a project selection. Do not mark complete or merge.
+
 Current gate: four generic capabilities are published, staged with guarded
 original-file backups and verified in restarted production. See the
 [latest staging evidence](../docs/tickets/issue-32-parametric-bottle-dispenser.md#latest-production-staging-milestone).

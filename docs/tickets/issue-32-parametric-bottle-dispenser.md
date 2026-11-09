@@ -3,9 +3,53 @@
 **Issue:** [#32](https://github.com/Q-Bot2021/fusion360-mcp-server/issues/32)  
 **Plan:** [execution plan](../../plans/four-input-parametric-bottle-dispenser.md)  
 **Branch:** `tickets/parametric-modeling/Implementation/ticket_32`  
-**Status:** Four generic capabilities published, staged with original-file backups
-and verified in restarted production. Direct client capability discovery remains
-unavailable in this chat. Dispenser CAD has not yet been created.
+**Status:** Four capabilities published and verified in production; direct client
+discovery works. Native dispenser built and revised in place for FDM, with
+persistent F3D/STL. Final visual/slicing/cloud save and physical feed acceptance
+remain pending.
+
+## Dispenser and FDM review milestone
+
+The user requested an in-place FDM revision to reduce large overhangs, supports
+and sharp corners, then specified an inside rear-to-lower-track radius equal to
+the bottle radius. All CAD creation and changes used direct visible Fusion MCP
+calls in the same document `de7035fd-e913-4ed0-a5b6-e38fce02fe67`.
+
+The revised model has one body, fully constrained driving profiles, native
+`TierCount/2` shelf and retaining-rail patterns, four independent inputs and
+derived sizing expressions. Far-side full-height wall was replaced by straight
+tapered rails; windows/drains and obsolete combine are intentionally suppressed.
+Inside rear fillet `d133 = BottleDiameter/2` is 29 mm; front lip rounding is
+`Wall/3`. All active feature health states are 0; suppressed obsolete states
+are 3. Default bounds: 244.76 x 238.20 x 173.270 mm.
+
+Diameter 58->60, height 215->220, count 8->9 and tiers 2->4 were independently
+tested and restored with healthy active features and one body. Count9 rounds
+to five slots per tier and exceeds P1S depth; tiers4 exceeds one-piece printer
+height. Native parameter edits do not rerun a builder.
+
+Persistent separate-project deliverables:
+
+- `Bottle_Dispenser\BottleDispenser-FDM-review.f3d`, 208952 bytes,
+  SHA-256 `5299818c9c518c1520baed77aa007c8cc88a690a018f4aaa47f48329586f8c4f`.
+- `Bottle_Dispenser\BottleDispenser-FDM-review.stl`, 46784 bytes,
+  SHA-256 `2d9d830b8e629cef4e0997427795f25cc038e8af29ed7b6be6e7d1dcafad7d73`.
+- [FDM research and measured checks](../../../Bottle_Dispenser/docs/fdm-design-research.md).
+
+Read-only STL analysis (934 triangles) found zero downward non-bed triangles
+below45degrees from horizontal in side-down orientation; taper faces are
+approximately53degrees. Print envelope after +90degrees about X is
+244.76 x 173.27 x 238.20 mm. Eight static ideal-cylinder positions passed
+sampled mesh-intrusion tests (360 angles, three axial stations, 0.05mm
+tessellation/contact allowance). Neither check establishes an actual slice,
+physical feed reliability or rear-position release.
+
+Final visual review is blocked: the API still reports loft sketches visible
+despite the user's hide confirmation, so their reference points dominate fit.
+Cloud project was left blank, so the live design is not saved online; persistent
+F3D is verified, but it does not fulfill the cloud-source gate. Actual Bambu
+Studio slice, printer keep-out placement, physical print/feed and user acceptance
+remain pending. Leave unresolved ticket criteria unchecked.
 
 ## Latest production staging milestone
 
